@@ -1,6 +1,6 @@
 name: Handin workflow
 
-  # Workflow triggers
+  # The workflow triggers
 on:
   push:
     branches:
