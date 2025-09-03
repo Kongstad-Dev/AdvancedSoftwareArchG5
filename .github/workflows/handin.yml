@@ -112,12 +112,12 @@ jobs:
       contents: read 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v4.2.0
 
       # Cache LaTeX packages
       - name: Cache LaTeX packages
         id: latex-cache
-        uses: actions/cache@v4
+        uses: actions/cache@v4.2.0
         with:
           path: |
             /usr/share/texlive/
