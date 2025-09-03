@@ -121,7 +121,7 @@ jobs:
           context: . #Path to your dockerfile
           push: true
           tags: ghcr.io/${{ env.OWNER_LOWER }}/${{ env.DOCKER_IMAGE_NAME }}:1.0-${{ github.sha }},ghcr.io/${{ env.OWNER_LOWER }}/${{ env.DOCKER_IMAGE_NAME }}:latest
-
+ #aA
   # Job for deploying the application, could be the logic for deploying to your VM  
   deploy-application:
     runs-on: ubuntu-latest
