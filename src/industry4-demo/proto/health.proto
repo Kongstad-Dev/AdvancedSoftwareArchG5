@@ -1,0 +1,28 @@
+syntax = "proto3";
+
+package health;
+
+service HealthService {
+  rpc SyncConfig (ConfigRequest) returns (ConfigResponse);
+  rpc PublishHealth (HealthEvent) returns (Ack);
+}
+
+message ConfigRequest {
+  string factory = 1;
+}
+
+message ConfigResponse {
+  bool healthy = 1;
+  string lastUpdated = 2;
+}
+
+message HealthEvent {
+  string sensorId = 1;
+  bool anomaly = 2;
+  string reason = 3;
+  string timestamp = 4;
+}
+
+message Ack {
+  bool accepted = 1;
+}

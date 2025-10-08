@@ -1,0 +1,37 @@
+```mermaid
+graph LR
+  subgraph PMS [PMS (Node.js, Layered)]
+    PMS_UI[PMS Presentation Layer]
+    PMS_LOGIC[PMS Application Logic]
+    PMS_DATA[PMS Data Access]
+  end
+
+  subgraph MMS [MMS (Python + Go)]
+    MONITORING[MMS Monitoring (Python)]
+    REDUNDANCY[MMS Redundancy (Go)]
+  end
+
+  subgraph DIS [DIS (Node.js Microservice)]
+    DIS_NODE[DIS Coordinator]
+  end
+
+  subgraph Infra [Shared Infrastructure]
+    Kafka[(Kafka Topics)]
+    Rabbit[(RabbitMQ Alerts)]
+    MQTT[(MQTT Broker)]
+    Postgres[(PostgreSQL)]
+    Mongo[(MongoDB)]
+  end
+
+  PMS_UI --> PMS_LOGIC --> PMS_DATA --> Postgres
+  PMS_LOGIC --> Kafka
+  PMS_LOGIC -.gRPC ProtoBuf.-> REDUNDANCY
+  MQTT --> MONITORING
+  MONITORING --> Kafka
+  MONITORING -.gRPC ProtoBuf.-> REDUNDANCY
+  REDUNDANCY --> Rabbit
+  REDUNDANCY --> Mongo
+  Rabbit --> DIS_NODE
+  DIS_NODE --> Mongo
+  Kafka -->|"sensor-health"| REDUNDANCY
+```

@@ -1,0 +1,23 @@
+```mermaid
+sequenceDiagram
+  participant Sensor
+  participant MQTT
+  participant Monitoring as MMS Monitoring (Python)
+  participant Kafka
+  participant Redundancy as MMS Redundancy (Go)
+  participant RabbitMQ
+  participant DIS as DIS Coordinator (Node)
+
+  Sensor->>MQTT: Publish sensor payload
+  MQTT->>Monitoring: MQTT message
+  Monitoring->>Kafka: Produce sensor-health event
+  Monitoring->>Redundancy: gRPC PublishHealth (protobuf)
+  alt anomaly detected
+    Redundancy->>MongoDB: Insert reroute audit
+    Redundancy->>RabbitMQ: Publish failure-alert
+    RabbitMQ->>DIS: Deliver alert
+    DIS->>MongoDB: Visitor sync/trace
+  else healthy
+    Redundancy-->>Monitoring: Ack without reroute
+  end
+```

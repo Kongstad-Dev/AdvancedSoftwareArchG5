@@ -1,0 +1,8 @@
+grpcio==1.62.2
+grpcio-tools==1.62.2
+gaphor==2.20.0
+kafka-python==2.0.2
+paho-mqtt==1.6.1
+psycopg2-binary==2.9.9
+pybreaker==0.7.0
+pysysml2==0.1.5

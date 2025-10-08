@@ -1,0 +1,32 @@
+{
+  "name": "industry4-demo",
+  "version": "1.0.0",
+  "description": "Polyglot Industry 4.0 demonstrator validating interaction, interoperability, and dependability requirements.",
+  "private": true,
+  "main": "index.js",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "infra:docker:up": "docker compose up -d",
+    "infra:docker:down": "docker compose down",
+    "infra:podman:up": "podman-compose up -d",
+    "infra:podman:down": "podman-compose down",
+    "proto:generate:node": "node scripts/generate-proto.js",
+    "start:sensor": "node services/node/mock/sensor-mock.js",
+    "start:pms": "node services/node/pms/pms-publisher.js",
+    "start:dis": "node services/node/dis/dis-coordinator.js"
+  },
+  "dependencies": {
+    "@grpc/grpc-js": "^1.10.1",
+    "@grpc/proto-loader": "^0.7.7",
+    "amqplib": "^0.10.4",
+    "kafkajs": "^2.2.4",
+    "mongodb": "^6.8.0",
+    "mqtt": "^5.3.2",
+    "nodemailer": "^6.9.13",
+    "opossum": "^7.0.1",
+    "pg": "^8.11.3",
+    "yargs": "^17.7.2"
+  }
+}
