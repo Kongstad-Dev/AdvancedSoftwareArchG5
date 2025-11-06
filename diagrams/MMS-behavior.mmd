@@ -1,0 +1,28 @@
+flowchart TD
+  %% --- Start ---
+  A([Start]) --> B[Collect Data from Sources]
+  B --> C{Data Type?}
+  C -->|Sensor Stream| D[Real-Time Processing & Anomaly Detection]
+  C -->|Equipment Logs| E[Batch Analysis]
+
+  D --> G{Anomaly Detected?}
+  E --> G
+  F --> G
+
+  G -->|No| H[Store Normal Data in MongoDB]
+  G -->|Yes| I[Trigger Maintenance Workflow]
+
+  I --> J{Maintenance Type?}
+  J -->|Predictive| K[Predictive Maintenance Module]
+  J -->|Preventive| L[Preventive Maintenance Module]
+  J -->|Reactive| M[Reactive Maintenance Module]
+
+  K --> N[Generate Work Order & Schedule Task]
+  L --> N
+  M --> N
+
+  N --> O[Update PMS via gRPC API]
+  O --> P[Notify Technician & Log to PostgreSQL]
+  P --> Q[Send Alerts & Update Dashboard]
+  Q --> R([End])
+  H --> R

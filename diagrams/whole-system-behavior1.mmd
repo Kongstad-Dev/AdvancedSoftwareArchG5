@@ -1,0 +1,24 @@
+stateDiagram-v2
+  [*] --> Idle
+
+  Idle --> DataIngestion : Start Data Stream
+  DataIngestion --> Monitoring : Data Received
+  Monitoring --> FaultDetected : Anomaly Found
+  Monitoring --> NormalOperation : No Anomaly
+
+  FaultDetected --> MaintenanceAnalysis : Analyze Fault
+  MaintenanceAnalysis --> PredictiveMaintenance : Condition-Based Rule
+  MaintenanceAnalysis --> PreventiveMaintenance : Time-Based Rule
+  MaintenanceAnalysis --> ReactiveMaintenance : Immediate Issue
+
+  PredictiveMaintenance --> TaskScheduling : Generate Work Order
+  PreventiveMaintenance --> TaskScheduling
+  ReactiveMaintenance --> TaskScheduling
+
+  TaskScheduling --> Notification : Notify PMS / Technician
+  Notification --> Logging : Record in MongoDB/PostgreSQL
+  Logging --> Reporting : Update Dashboard / Reports
+  Reporting --> Idle : Return to Monitoring State
+
+  NormalOperation --> Logging : Store Regular Data
+  Logging --> Idle : Wait for Next Event

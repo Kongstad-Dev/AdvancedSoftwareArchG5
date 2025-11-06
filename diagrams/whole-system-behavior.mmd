@@ -1,0 +1,16 @@
+sequenceDiagram
+  participant Factory
+  participant Kafka
+  participant PMS
+  participant gRPC_API as gRPC API
+  participant MMS
+  participant PostgreSQL
+  participant MongoDB
+
+  Factory->>Kafka: Send production event
+  Kafka->>PMS: Deliver event (task details)
+  PMS->>PostgreSQL: Store structured task data
+  PMS->>MongoDB: Store task logs/config
+  PMS->>gRPC_API: Notify downstream systems
+  gRPC_API->>MMS: Update with event context
+  MMS->>MongoDB: Log monitoring data

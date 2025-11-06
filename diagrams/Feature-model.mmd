@@ -1,0 +1,51 @@
+graph TD
+    Root[Industry 4.0 Production System]
+    Root --o|Mandatory| PMS[Production Management System]
+    PMS --o|Mandatory| Sched[Scheduling]
+    PMS --o|Mandatory| WC[Workflow Configuration]
+    PMS --x|Optional|Opt[Optimization]
+    Opt -.->|requires| Sched
+    Opt -.->|requires| WC
+    Sched <-.->|requires| WC
+    
+    
+    Root --o|Mandatory|MMS[Monitoring and Maintenance System]
+    MMS --o|Mandatory|Mon[Monitoring System]
+    MMS --o|Mandatory| AD[Anomaly Detection]
+    MMS --o|Mandatory| RM[Redundancy Management]
+    MMS --x|Optional| TM[Telemetry]
+    AD -.->|requires|Mon
+    RM -.->|requires|AD
+    TM -.->|optional|RM
+    TM -.->|optional|AD
+    TM -.->|requires|Mon
+    TD[Telemetry Dashboard] -.->|requires|TM
+    Root --o|Mandatory|DIS[Deployment and Integration System]
+    DIS --o|Mandatory|CI[CI/CD Pipeline]
+    DIS --o|Mandatory|DO[Deployment Orchestrator]
+    DO -.->|requires|CI
+
+
+    
+
+
+
+    class PM,MM,DI,Sched,WC,TD,Mon,AD,RM,CI,DO,CFC mandatory
+    class Opt,SE,AE,RB optional,orGroupS
+
+
+%%PMS Subsystem:
+%%Scheduling SubSubsystem:
+%%- Task distribution
+%%- deadlines
+%%- workload evaluation
+
+
+%%Workflow Configuration SubSubsystem:
+%%- Manages production reconfiguration (e.g., move production too fabrik 2).
+
+%%MMS Subsystem:
+%%- Monitoring SubSubsystem: Continuously tracks machine health and sensor data.
+%%  - Anomaly Detection SubSubsystem: Identifies issues from sensor data and generates alerts.
+%%  - Log entries in  DB.
+%%- Redundancy Management SubSubsystem: Automatically reroutes tasks to backups during failures.

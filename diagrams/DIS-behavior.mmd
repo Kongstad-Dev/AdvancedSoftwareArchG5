@@ -1,0 +1,15 @@
+sequenceDiagram
+  participant Developer
+  participant CICD as CI/CD Pipeline
+  participant Docker
+  participant Deployment
+  participant CoreSystems as Core Systems (PMS, MMS)
+  participant Factories
+  participant DB as PostgreSQL/MongoDB
+
+  Developer->>CICD: Commit new update
+  CICD->>Docker: Build and package image
+  Docker->>Deployment: Push image to registry
+  Deployment->>CoreSystems: Deploy updated services
+  CoreSystems->>Factories: Send updated control logic
+  Deployment->>DB: Log deployment metadata
