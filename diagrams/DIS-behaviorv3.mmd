@@ -1,0 +1,15 @@
+sequenceDiagram
+participant Developer
+participant CoreSystems as Core Systems Server (PMS, MMS)
+participant CICD as CI/CD Pipeline
+participant ContainerRegistry as Container Registry
+participant DeploymentOrchestrator as Deployment Orchestrator
+participant Factories
+
+Developer ->> CoreSystems: Implement new feature
+Developer ->> CICD: Commit new update
+CICD ->> ContainerRegistry: Build and push Docker image
+DeploymentOrchestrator ->> ContainerRegistry: Fetch latest image version
+DeploymentOrchestrator ->> CoreSystems: Deploy new version to Core Systems server
+CoreSystems --> Developer: Deployment confirmed
+Factories ->> CoreSystems: Continue normal data exchange (no direct deployment)

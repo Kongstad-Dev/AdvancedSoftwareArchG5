@@ -1,15 +1,14 @@
 sequenceDiagram
-  participant Developer
-  participant CICD as CI/CD Pipeline
-  participant Docker
-  participant Deployment
-  participant CoreSystems as Core Systems (PMS, MMS)
-  participant Factories
-  participant DB as PostgreSQL/MongoDB
+participant Developer
+participant CoreSystems as Core Systems  MMS)
+participant CICD as CI/CD Pipeline
+participant Container Registry as Container Registry
+participant DeploymentOrchestrator as Deployment Orchestrator
+participant Factories
 
-  Developer->>CICD: Commit new update
-  CICD->>Docker: Build and package image
-  Docker->>Deployment: Push image to registry
-  Deployment->>CoreSystems: Deploy updated services
-  CoreSystems->>Factories: Send updated control logic
-  Deployment->>DB: Log deployment metadata
+Developer ->>CoreSystems: Implement new feature
+Developer->>CICD: Commit new update
+CICD->>Container Registry: Docker image is built and pushed
+DeploymentOrchestrator --> Container Registry: Latest image version is fetched
+DeploymentOrchestrator ->> Factories: New feature is deployed
+Factories --> DeploymentOrchestrator: New feature is reflected

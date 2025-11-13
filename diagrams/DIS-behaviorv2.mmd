@@ -1,0 +1,56 @@
+sequenceDiagram
+    autonumber
+    title Use Case 3 — Continuous Deployment of Production Services
+
+    %% Participants
+    actor Engineer as DevOps Engineer
+    participant Repo as Code Repository
+    participant CI as CI CD Pipeline
+    participant Orchestrator as Deployment Orchestrator
+    participant Service as Production Service
+
+    %% Preconditions
+    note over Engineer,Repo: New software version available
+
+    %% 1) Commit and trigger
+    Engineer ->> Repo: Commit code and open pull request
+    Repo -->> CI: Trigger pipeline on push
+
+    %% 2) Build, test, and verify
+    CI ->> CI: Build artifacts and run unit tests
+    CI ->> CI: Integration and compatibility checks
+
+    alt Pipeline succeeds
+        CI -->> Orchestrator: Publish artifact and deployment manifest
+        CI -->> Engineer: Pipeline passed
+
+        %% 3) Incremental rollout (keep old active)
+        Orchestrator ->> Orchestrator: Create vNew alongside vOld
+        loop Progressive rollout
+            Orchestrator ->> Service: Route small traffic slice to vNew
+            Service -->> Orchestrator: Health and metrics
+            alt Healthy
+                Orchestrator ->> Orchestrator: Increase traffic to vNew
+            else Issues detected
+                Orchestrator ->> Orchestrator: Roll back traffic to vOld
+                Orchestrator -->> Engineer: Rollout halted with diagnostics
+                break
+            end
+        end
+
+        alt Rollout completed
+            Orchestrator ->> Orchestrator: Promote vNew to primary and retire vOld
+            Orchestrator -->> CI: Deployment complete
+            CI -->> Engineer: Success notification
+            note over Orchestrator,Service: Zero downtime and seamless integration achieved
+        else Rollout aborted
+            Orchestrator -->> CI: Deployment failed and reverted to vOld
+            CI -->> Engineer: Failure notification and logs
+        end
+    else Pipeline fails
+        CI -->> Engineer: Tests or compatibility failed
+        Engineer ->> Repo: Fix and recommit
+    end
+
+    %% Postcondition
+    note over CI,Service: New service deployed safely and seamlessly ensuring deployability

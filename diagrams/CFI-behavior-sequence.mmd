@@ -1,0 +1,58 @@
+sequenceDiagram
+    autonumber
+    title Use Case 4 — Cross-Factory Integration Sequence
+
+    %% Participants
+    actor ManagerA as Factory Manager A
+    actor ManagerB as Factory Manager B
+    participant PMS_A as PMS @ Factory A
+    participant PMS_B as PMS @ Factory B
+    participant DIS as Integration Service / DIS
+    participant BUS as Message Bus / Kafka-MQTT
+
+    %% Preconditions
+    note over PMS_A,DIS: Multiple factories connected to a shared integration platform
+    note over PMS_B,DIS: Shared integration enables coordination
+
+    %% 1. Collect & share workload/resource data
+    par Periodic telemetry
+        PMS_A ->> BUS: publish workload and resources from A
+        PMS_B ->> BUS: publish workload and resources from B
+        BUS -->> DIS: forward metrics from A and B
+        DIS ->> BUS: broadcast aggregated snapshot for all sites
+        BUS -->> PMS_A: aggregated snapshot
+        BUS -->> PMS_B: aggregated snapshot
+    end
+
+    %% 2. Identify balancing opportunities
+    DIS ->> DIS: analyze load and capacity across sites
+    alt Opportunity found
+        DIS ->> ManagerA: propose redistribution plan between A and B
+        DIS ->> ManagerB: propose redistribution plan between A and B
+
+        par Manager approvals
+            ManagerA -->> DIS: approve or deny
+            ManagerB -->> DIS: approve or deny
+        end
+
+        alt All approvals received
+            %% 3. Synchronize updated plan across factories
+            DIS ->> BUS: emit UpdatedPlan event
+            par Apply plan at each site
+                BUS -->> PMS_A: UpdatedPlan
+                PMS_A ->> PMS_A: reschedule and redistribute tasks
+                BUS -->> PMS_B: UpdatedPlan
+                PMS_B ->> PMS_B: reschedule and redistribute tasks
+            end
+            DIS -->> ManagerA: synchronization complete
+            DIS -->> ManagerB: synchronization complete
+            note over DIS,PMS_A: Postcondition: Factories coordinate effectively
+        else Any denial or timeout
+            DIS -->> ManagerA: plan rejected or expired
+            DIS -->> ManagerB: plan rejected or expired
+            DIS ->> DIS: revise proposal or retry later
+        end
+    else No beneficial redistribution
+        DIS -->> ManagerA: no action needed, loads balanced
+        DIS -->> ManagerB: no action needed, loads balanced
+    end
