@@ -1,14 +1,15 @@
 sequenceDiagram
 participant Developer
-participant CoreSystems as Core Systems  MMS)
-participant CICD as CI/CD Pipeline
-participant Container Registry as Container Registry
-participant DeploymentOrchestrator as Deployment Orchestrator
-participant Factories
+participant DIS as Deployment & Integration System (DIS)
+participant CoreSystems as Core Systems (PMS/MMS)
+participant Cloud
 
-Developer ->>CoreSystems: Implement new feature
-Developer->>CICD: Commit new update
-CICD->>Container Registry: Docker image is built and pushed
-DeploymentOrchestrator --> Container Registry: Latest image version is fetched
-DeploymentOrchestrator ->> Factories: New feature is deployed
-Factories --> DeploymentOrchestrator: New feature is reflected
+Developer->>Developer: Implement new feature in PMS/MMS
+Developer->>DIS: Commit and push code
+DIS->>DIS: Build Docker image
+DIS->>DIS: Push container image
+DIS->>DIS: Validate deployment
+DIS->>CoreSystems: Deploy updated PMS/MMS services
+CoreSystems-->>DIS: Deployment successful
+DIS->>Cloud: Update cloud deployment
+Cloud-->>DIS: Confirm updates
