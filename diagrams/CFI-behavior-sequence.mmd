@@ -1,58 +1,44 @@
 sequenceDiagram
     autonumber
-    title Use Case 4 — Cross-Factory Integration Sequence
+    title Use Case 4 — Cross-Factory Integration
 
     %% Participants
-    actor ManagerA as Factory Manager A
-    actor ManagerB as Factory Manager B
-    participant PMS_A as PMS @ Factory A
-    participant PMS_B as PMS @ Factory B
-    participant DIS as Integration Service / DIS
-    participant BUS as Message Bus / Kafka-MQTT
+    participant FactoryX as Factory X
+    participant BUS as Message Bus
+    participant Global_MMS as Global MMS
+    participant Global_PMS as Global PMS
 
     %% Preconditions
-    note over PMS_A,DIS: Multiple factories connected to a shared integration platform
-    note over PMS_B,DIS: Shared integration enables coordination
+    note over FactoryX,Global_PMS: Precondition: Multiple factories connected to shared platform
 
-    %% 1. Collect & share workload/resource data
-    par Periodic telemetry
-        PMS_A ->> BUS: publish workload and resources from A
-        PMS_B ->> BUS: publish workload and resources from B
-        BUS -->> DIS: forward metrics from A and B
-        DIS ->> BUS: broadcast aggregated snapshot for all sites
-        BUS -->> PMS_A: aggregated snapshot
-        BUS -->> PMS_B: aggregated snapshot
+    %% Step 1: Collect & share data
+    rect rgb(240, 248, 255)
+        note over FactoryX,Global_MMS: Step 1: Collect and share workload and resource data
+        FactoryX ->> BUS: publish(capacity, health metrics, workload, deadlines)
+        BUS ->> Global_MMS: forward factory metrics
+        Global_MMS ->> Global_MMS: aggregate data
+        Global_MMS ->> Global_PMS: share resource availability
     end
 
-    %% 2. Identify balancing opportunities
-    DIS ->> DIS: analyze load and capacity across sites
-    alt Opportunity found
-        DIS ->> ManagerA: propose redistribution plan between A and B
-        DIS ->> ManagerB: propose redistribution plan between A and B
+    %% Step 2: Identify opportunities
+    rect rgb(255, 250, 240)
+        note over Global_PMS: Step 2: Identify opportunities to balance tasks
+        Global_PMS ->> Global_PMS: analyze load across factories
+    end
 
-        par Manager approvals
-            ManagerA -->> DIS: approve or deny
-            ManagerB -->> DIS: approve or deny
+    alt Redistribution needed
+        %% Step 3: Distribute tasks
+        rect rgb(255, 240, 245)
+            note over FactoryX,Global_PMS: Step 3: Distribute tasks based on plan
+            Global_PMS ->> BUS: publish(task assignments)
+            BUS ->> FactoryX: distribute tasks
+            FactoryX ->> FactoryX: execute assigned tasks
+            FactoryX -->> BUS: task status updates
+            BUS -->> Global_PMS: confirm task execution
         end
 
-        alt All approvals received
-            %% 3. Synchronize updated plan across factories
-            DIS ->> BUS: emit UpdatedPlan event
-            par Apply plan at each site
-                BUS -->> PMS_A: UpdatedPlan
-                PMS_A ->> PMS_A: reschedule and redistribute tasks
-                BUS -->> PMS_B: UpdatedPlan
-                PMS_B ->> PMS_B: reschedule and redistribute tasks
-            end
-            DIS -->> ManagerA: synchronization complete
-            DIS -->> ManagerB: synchronization complete
-            note over DIS,PMS_A: Postcondition: Factories coordinate effectively
-        else Any denial or timeout
-            DIS -->> ManagerA: plan rejected or expired
-            DIS -->> ManagerB: plan rejected or expired
-            DIS ->> DIS: revise proposal or retry later
-        end
-    else No beneficial redistribution
-        DIS -->> ManagerA: no action needed, loads balanced
-        DIS -->> ManagerB: no action needed, loads balanced
+        note over FactoryX,Global_PMS: Postcondition: Factories coordinate effectively
+
+    else No action needed
+        Global_PMS ->> Global_PMS: maintain current state
     end

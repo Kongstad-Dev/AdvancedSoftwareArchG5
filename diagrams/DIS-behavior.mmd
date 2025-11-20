@@ -1,15 +1,24 @@
 sequenceDiagram
 participant Developer
-participant DIS as Deployment & Integration System (DIS)
-participant CoreSystems as Core Systems (PMS/MMS)
+participant CICD as CI/CD Pipeline Subsystem
+participant Orchestrator as Deployment Orchestrator Subsystem
+participant PMS as Production Management System
+participant MMS as Monitoring & Maintenance System
 participant Cloud
 
 Developer->>Developer: Implement new feature in PMS/MMS
-Developer->>DIS: Commit and push code
-DIS->>DIS: Build Docker image
-DIS->>DIS: Push container image
-DIS->>DIS: Validate deployment
-DIS->>CoreSystems: Deploy updated PMS/MMS services
-CoreSystems-->>DIS: Deployment successful
-DIS->>Cloud: Update cloud deployment
-Cloud-->>DIS: Confirm updates
+Developer->>CICD: Commit and push code
+CICD->>CICD: Run automated tests
+CICD->>CICD: Build Docker image
+CICD->>CICD: Verify software compatibility
+CICD-->>Orchestrator: Build successful, ready for deployment
+Orchestrator->>Orchestrator: Plan incremental rollout
+Orchestrator->>PMS: Deploy updated PMS services (phase 1)
+PMS-->>Orchestrator: Deployment successful
+Orchestrator->>Orchestrator: Validate PMS deployment health
+Orchestrator->>MMS: Deploy updated MMS services (phase 2)
+MMS-->>Orchestrator: Deployment successful
+Orchestrator->>Orchestrator: Validate MMS deployment health
+Orchestrator->>Cloud: Update cloud deployment
+Cloud-->>Orchestrator: Confirm updates
+Orchestrator-->>Developer: Deployment complete (99.99% uptime maintained)
