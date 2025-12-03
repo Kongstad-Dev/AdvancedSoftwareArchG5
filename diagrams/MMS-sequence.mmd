@@ -1,19 +1,18 @@
 sequenceDiagram
 autonumber
-actor Manager as Production Manager
 participant MMS as Monitoring & Maintenance System (MMS)
-participant RC as Redundancy Controller
 participant PMS as Production Mgmt System (PMS/Scheduler)
 participant Kafka as Kafka Bus
 participant MQTT as MQTT Broker
 participant Primary as Primary Machine/Sensor
 participant Backup as Backup Machine/Sensor
-participant DB as MongoDB/PostgreSQL (metrics)
+participant DB as MongoDB (Sensor Data)
 
 %% --- Normal operation: continuous health monitoring ---
 loop every 1s health check
   Primary-->>MQTT: status OK + metrics
-  MQTT-->>MMS: status OK + metrics
+  MQTT-->>Kafka: status OK + metrics
+  Kafka-->>MMS: status OK + metrics
   MMS->>DB: persist(metrics);
 end
 
@@ -22,18 +21,21 @@ alt Primary failure detected [timeout > 3s OR 3 consecutive misses]
   MMS->>DB: getBackupInfo(primaryId)
   DB-->>MMS: backupId, status OK
   MMS->>PMS: notifyFailure(primaryId, backUpId) (gRPC)
-
-  RC->>MQTT: updateDeviceBindings(backup)
-  RC-)Manager: notifySwitchover(primary→backup, RTO, details)
+  PMS->>Kafka: updateWorkloadConfiguration(backUpId)
   Note over PMS,Backup: Production continues without interruption (target 99.9% uptime)
 else Backup not available
-  RC-)Manager: escalateIncident(primary down, no backup)
-  RC->>PMS: enterDegradedMode()\npause non-critical jobs
+  MMS->>DB: getBackupInfo(primaryId)
+  DB-->>MMS: Null, status 404
+  MMS->>PMS: haltProduction() (gRPC)
+  PMS->>Kafka: haltProduction()
+  Note over PMS,Backup: Production halted, until manual intervention
 end
 
 %% --- Recovery path (optional/hysteresis) ---
-opt Primary recovers later [N=5 consecutive healthy checks]
-  MMS-)RC: PrimaryRecovered(primaryId)
-  RC->>PMS: planRebalance(primary↔backup) [guard: stable ≥ 2m]
-  RC-)Manager: notifyRecovery(plan/details)
+opt Primary sensor recovers later [N=5 consecutive healthy checks]
+  Primary-->>MQTT: status OK + metrics
+  MQTT-->>Kafka: status OK + metrics
+  Kafka-->>MMS: status OK + metrics
+  MMS->>PMS: notifyRecovery(primaryId) (gRPC)
+  PMS->>Kafka: updateWorkloadConfiguration(primaryId)
 end

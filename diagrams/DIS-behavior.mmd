@@ -9,7 +9,7 @@ participant Cloud
 Developer->>Developer: Implement new feature in PMS/MMS
 Developer->>CICD: Commit and push code
 CICD->>CICD: Run automated tests
-CICD->>CICD: Build Docker image
+CICD->>CICD: Build & push Docker image
 CICD->>CICD: Verify software compatibility
 CICD-->>Orchestrator: Build successful, ready for deployment
 Orchestrator->>Orchestrator: Plan incremental rollout

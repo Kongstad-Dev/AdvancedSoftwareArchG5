@@ -4,15 +4,15 @@ sequenceDiagram
 
     %% Participants
     participant FactoryX as Factory X
-    participant BUS as Message Bus
-    participant Global_MMS as Global MMS
-    participant Global_PMS as Global PMS
+    participant BUS as MQTT & Kafka
+    participant Global_MMS as MMS
+    participant Global_PMS as PMS
 
     %% Preconditions
     note over FactoryX,Global_PMS: Precondition: Multiple factories connected to shared platform
 
     %% Step 1: Collect & share data
-    rect rgb(240, 248, 255)
+    rect rgba(240, 248, 255, 0.09)
         note over FactoryX,Global_MMS: Step 1: Collect and share workload and resource data
         FactoryX ->> BUS: publish(capacity, health metrics, workload, deadlines)
         BUS ->> Global_MMS: forward factory metrics
@@ -21,14 +21,14 @@ sequenceDiagram
     end
 
     %% Step 2: Identify opportunities
-    rect rgb(255, 250, 240)
+    rect rgba(255, 250, 240, 0.09)
         note over Global_PMS: Step 2: Identify opportunities to balance tasks
         Global_PMS ->> Global_PMS: analyze load across factories
     end
 
     alt Redistribution needed
         %% Step 3: Distribute tasks
-        rect rgb(255, 240, 245)
+        rect rgba(255, 240, 245, 0.09)
             note over FactoryX,Global_PMS: Step 3: Distribute tasks based on plan
             Global_PMS ->> BUS: publish(task assignments)
             BUS ->> FactoryX: distribute tasks
