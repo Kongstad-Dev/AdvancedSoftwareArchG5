@@ -1,0 +1,65 @@
+syntax = "proto3";
+
+package factory;
+
+option java_multiple_files = true;
+option java_package = "com.industry4.factory";
+
+// Factory Status Service - Used by MMS to report factory status to PMS
+service FactoryStatusService {
+  // Report the current status of a factory
+  rpc ReportFactoryStatus(FactoryStatusUpdate) returns (StatusResponse);
+  
+  // Get current factory status
+  rpc GetFactoryStatus(FactoryStatusRequest) returns (FactoryStatusResponse);
+}
+
+// Factory status enumeration
+enum FactoryStatus {
+  UP = 0;
+  DEGRADED = 1;
+  DOWN = 2;
+}
+
+// Request to update factory status
+message FactoryStatusUpdate {
+  string factory_id = 1;
+  FactoryStatus status = 2;
+  string reason = 3;
+  int64 timestamp = 4;
+}
+
+// Response for status update
+message StatusResponse {
+  bool success = 1;
+  string message = 2;
+  int32 orders_rescheduled = 3;
+}
+
+// Request to get factory status
+message FactoryStatusRequest {
+  string factory_id = 1;
+}
+
+// Response with factory status details
+message FactoryStatusResponse {
+  string factory_id = 1;
+  FactoryStatus status = 2;
+  int32 capacity = 3;
+  int32 active_orders = 4;
+  int64 last_heartbeat = 5;
+}
+
+// Heartbeat message structure (for reference, used in Kafka messages)
+message HeartbeatMessage {
+  string factory_id = 1;
+  int64 timestamp = 2;
+  Metrics metrics = 3;
+}
+
+message Metrics {
+  double cpu_usage = 1;
+  double memory_usage = 2;
+  int32 error_count = 3;
+  double latency_ms = 4;
+}

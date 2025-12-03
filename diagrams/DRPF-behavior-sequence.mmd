@@ -3,39 +3,46 @@ sequenceDiagram
     title Use Case 2 — Dynamic Reconfiguration of Production Workflow
 
     %% Participants
-    actor Manager as Factory Manager
-    participant Scheduler as Production Scheduler
-    participant Optimizer as Optimizer Service
-    participant Engine as Workflow Engine
+    box rgb(200, 220, 255) Production Management System (PMS)
+        participant Scheduling as Scheduling Subsystem
+        participant Optimizer as Optimizer Service
+        participant WorkflowConfig as Workflow Configuration Subsystem
+    end
+    box rgb(255, 220, 200) Monitoring and Maintenance System (MMS)
+        participant Monitor as Monitoring Subsystem
+    end
 
     %% Preconditions
-    note over Scheduler,Engine: Multiple workflows available and system is adaptable
-    note over Optimizer,Scheduler: Objective includes workload, deadlines, and energy use
+    note over Scheduling,WorkflowConfig: Multiple workflows available and system is adaptable
 
-    %% 1. Scheduler evaluates context
-    Scheduler ->> Optimizer: Send current workload, deadlines, energy profile
-    Optimizer ->> Optimizer: Analyze options and constraints
-    alt Better configuration exists
-        %% 2. Optimizer proposes modifications
-        Optimizer -->> Scheduler: Proposal set\nfaster workflow or greener option or task redistribution
-        %% 3. Manager review and approval
-        Scheduler ->> Manager: Present reconfiguration proposal and impact
-        alt Manager approves
-            Manager -->> Scheduler: Approved
-            %% 4. Apply changes without stopping the system
-            Scheduler ->> Engine: Apply reconfiguration\nversion new workflow and update routing
-            par Zero downtime application
-                Engine ->> Engine: Hot swap workflow while jobs continue
-                Engine -->> Scheduler: Reconfiguration applied
-            end
-            Scheduler -->> Manager: Update complete and system running
-            %% Postcondition
-            note over Scheduler,Optimizer: System adapts to new conditions and remains modifiable
-        else Manager rejects or requests changes
-            Manager -->> Scheduler: Rejected or needs revision
-            Scheduler ->> Optimizer: Provide feedback and constraints\niterate proposal
+    %% 1. Continuous monitoring provides context
+    Monitor ->> Scheduling: Real-time production metrics and machine health
+
+    %% 2. Scheduler evaluates context
+    Scheduling ->> Scheduling: Evaluate workload, deadlines, and energy consumption
+    Scheduling ->> Optimizer: Request optimization analysis with current constraints
+
+    %% 3. Optimizer analyzes and proposes
+    Optimizer ->> Optimizer: Analyze workflow options and constraints
+    
+    alt Better configuration found
+        Optimizer -->> Scheduling: Return reconfiguration proposal\n(faster workflow / greener option / task redistribution)
+        
+        %% 4. Apply reconfiguration
+        Scheduling ->> WorkflowConfig: Execute reconfiguration\napply new workflow version and update routing
+        
+        par Zero-downtime application
+            WorkflowConfig ->> WorkflowConfig: Hot-swap workflow while jobs continue
+            WorkflowConfig ->> Monitor: Notify configuration change
+            Monitor ->> Monitor: Track transition metrics
         end
+        
+        WorkflowConfig -->> Scheduling: Reconfiguration applied successfully
+        
+        %% Postcondition
+        note over Scheduling,WorkflowConfig: System adapts to new conditions, remains modifiable
+        
     else No improvement found
-        Optimizer -->> Scheduler: No reconfiguration recommended
-        Scheduler -->> Manager: No change needed at this time
+        Optimizer -->> Scheduling: No reconfiguration recommended
+        note over Scheduling: Continue monitoring for future optimization opportunities
     end

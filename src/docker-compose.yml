@@ -1,0 +1,263 @@
+version: '3.8'
+
+services:
+  # PostgreSQL - Orders, assignments, production events
+  postgres:
+    image: postgres:15-alpine
+    container_name: industry4-postgres
+    environment:
+      POSTGRES_USER: pms_user
+      POSTGRES_PASSWORD: pms_password
+      POSTGRES_DB: production_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./pms/src/db/init.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U pms_user -d production_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - industry4-network
+
+  # MongoDB - Heartbeats, anomalies, factory status
+  mongodb:
+    image: mongo:6
+    container_name: industry4-mongodb
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: mms_user
+      MONGO_INITDB_ROOT_PASSWORD: mms_password
+      MONGO_INITDB_DATABASE: monitoring_db
+    ports:
+      - "27018:27017"
+    volumes:
+      - mongodb_data:/data/db
+    healthcheck:
+      test: echo 'db.runCommand("ping").ok' | mongosh localhost:27017/test --quiet
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - industry4-network
+
+  # Zookeeper - Required for Kafka
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.4.0
+    container_name: industry4-zookeeper
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    ports:
+      - "2181:2181"
+    networks:
+      - industry4-network
+
+  # Kafka - Central event backbone
+  kafka:
+    image: confluentinc/cp-kafka:7.4.0
+    container_name: industry4-kafka
+    depends_on:
+      - zookeeper
+    ports:
+      - "9092:9092"
+      - "29092:29092"
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:29092,PLAINTEXT_HOST://localhost:9092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+    healthcheck:
+      test: ["CMD", "kafka-topics", "--bootstrap-server", "kafka:29092", "--list"]
+      interval: 10s
+      timeout: 10s
+      retries: 5
+    networks:
+      - industry4-network
+
+  # Mosquitto - MQTT broker for factory heartbeats
+  mosquitto:
+    image: eclipse-mosquitto:2
+    container_name: industry4-mosquitto
+    ports:
+      - "1883:1883"
+      - "9001:9001"
+    volumes:
+      - ./mosquitto/mosquitto.conf:/mosquitto/config/mosquitto.conf
+      - mosquitto_data:/mosquitto/data
+      - mosquitto_log:/mosquitto/log
+    healthcheck:
+      test: ["CMD", "mosquitto_sub", "-t", "$$SYS/#", "-C", "1", "-i", "healthcheck", "-W", "3"]
+      interval: 10s
+      timeout: 10s
+      retries: 3
+    networks:
+      - industry4-network
+
+  # PMS - Production Management System (Node.js)
+  pms:
+    build:
+      context: .
+      dockerfile: pms/Dockerfile
+    container_name: industry4-pms
+    depends_on:
+      postgres:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    ports:
+      - "3000:3000"
+      - "50051:50051"
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      GRPC_PORT: 50051
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_USER: pms_user
+      POSTGRES_PASSWORD: pms_password
+      POSTGRES_DB: production_db
+      KAFKA_BROKERS: kafka:29092
+    volumes:
+      - ./proto:/app/proto:ro
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    networks:
+      - industry4-network
+
+  # MMS - Monitoring & Maintenance System (Python)
+  mms:
+    build:
+      context: .
+      dockerfile: mms/Dockerfile
+    container_name: industry4-mms
+    depends_on:
+      mongodb:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+      pms:
+        condition: service_healthy
+    ports:
+      - "8000:8000"
+    environment:
+      MONGODB_URI: mongodb://mms_user:mms_password@mongodb:27017/monitoring_db?authSource=admin
+      KAFKA_BROKERS: kafka:29092
+      PMS_GRPC_HOST: pms
+      PMS_GRPC_PORT: 50051
+      HEARTBEAT_TIMEOUT_SECONDS: 3
+      HEALTH_CHECK_PORT: 8000
+    volumes:
+      - ./proto:/app/proto:ro
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    networks:
+      - industry4-network
+
+  # MQTT to Kafka Bridge
+  bridge:
+    build:
+      context: .
+      dockerfile: bridge/Dockerfile
+    container_name: industry4-bridge
+    depends_on:
+      mosquitto:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    environment:
+      MQTT_BROKER_URL: mqtt://mosquitto:1883
+      KAFKA_BROKERS: kafka:29092
+      KAFKA_TOPIC: factory.heartbeat
+      MQTT_TOPIC: factory/+/heartbeat
+    networks:
+      - industry4-network
+
+  # Factory Simulators
+  factory-1:
+    build:
+      context: .
+      dockerfile: factories/Dockerfile
+    container_name: industry4-factory-1
+    depends_on:
+      mosquitto:
+        condition: service_healthy
+    environment:
+      FACTORY_ID: factory-1
+      MQTT_BROKER_URL: mqtt://mosquitto:1883
+      HEARTBEAT_INTERVAL_MS: 1000
+      SIMULATE_FAILURES: "false"
+      FAILURE_PROBABILITY: 0.0
+    networks:
+      - industry4-network
+
+  factory-2:
+    build:
+      context: .
+      dockerfile: factories/Dockerfile
+    container_name: industry4-factory-2
+    depends_on:
+      mosquitto:
+        condition: service_healthy
+    environment:
+      FACTORY_ID: factory-2
+      MQTT_BROKER_URL: mqtt://mosquitto:1883
+      HEARTBEAT_INTERVAL_MS: 1000
+      SIMULATE_FAILURES: "false"
+      FAILURE_PROBABILITY: 0.0
+    networks:
+      - industry4-network
+
+  factory-3:
+    build:
+      context: .
+      dockerfile: factories/Dockerfile
+    container_name: industry4-factory-3
+    depends_on:
+      mosquitto:
+        condition: service_healthy
+    environment:
+      FACTORY_ID: factory-3
+      MQTT_BROKER_URL: mqtt://mosquitto:1883
+      HEARTBEAT_INTERVAL_MS: 1000
+      SIMULATE_FAILURES: "true"
+      FAILURE_PROBABILITY: 0.1
+    networks:
+      - industry4-network
+
+  factory-4:
+    build:
+      context: .
+      dockerfile: factories/Dockerfile
+    container_name: industry4-factory-4
+    depends_on:
+      mosquitto:
+        condition: service_healthy
+    environment:
+      FACTORY_ID: factory-4
+      MQTT_BROKER_URL: mqtt://mosquitto:1883
+      HEARTBEAT_INTERVAL_MS: 1000
+      SIMULATE_FAILURES: "true"
+      FAILURE_PROBABILITY: 0.05
+    networks:
+      - industry4-network
+
+volumes:
+  postgres_data:
+  mongodb_data:
+  mosquitto_data:
+  mosquitto_log:
+
+networks:
+  industry4-network:
+    driver: bridge

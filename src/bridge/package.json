@@ -1,0 +1,21 @@
+{
+  "name": "mqtt-kafka-bridge",
+  "version": "1.0.0",
+  "description": "MQTT to Kafka bridge for factory heartbeats",
+  "main": "src/bridge.js",
+  "scripts": {
+    "start": "node src/bridge.js",
+    "dev": "nodemon src/bridge.js"
+  },
+  "dependencies": {
+    "mqtt": "^5.3.0",
+    "kafkajs": "^2.2.4",
+    "winston": "^3.11.0"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.1"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

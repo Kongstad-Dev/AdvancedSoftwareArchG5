@@ -7,6 +7,16 @@
   - [.vscode](#vscode)
   - [Report](#report)
   - [Src](#src)
+- [Running the Industry 4.0 Production Platform](#running-the-industry-40-production-platform)
+  - [Prerequisites](#prerequisites)
+  - [Quick Start](#quick-start)
+  - [System Architecture](#system-architecture)
+  - [How the System Works](#how-the-system-works)
+  - [Factory Simulation](#factory-simulation)
+  - [Service Endpoints](#service-endpoints)
+  - [Monitoring and Logs](#monitoring-and-logs)
+  - [Testing the System](#testing-the-system)
+  - [Stopping the System](#stopping-the-system)
 - [Compiling Latex](#compiling-latex)
   - [Option 1: LaTeX Workshop + TeX Live](#option-1-latex-workshop--tex-live)
     - [Extension](#extension)
@@ -71,6 +81,244 @@ The directory latexUtils contains scripts for compiling LaTeX locally using dock
 ### Src
 This folder is intended for organizing and storing all your source code. You decide on the structure but please keep everything source code related inside `./src`.
 You are allowed to have your DockerFiles at root level for build context reasons, as the example DockerFile provided.
+
+## Running the Industry 4.0 Production Platform
+
+This project implements an Industry 4.0 Production Platform demonstrating availability tactics including heartbeat monitoring, fault detection, predictive maintenance, and automatic failover.
+
+### Prerequisites
+
+- **Docker** (v20.10+) and **Docker Compose** (v2.0+)
+- At least 4GB of available RAM
+- Ports 3000, 8000, 1883, 5432, 27017, 9092 available
+
+### Quick Start
+
+1. **Navigate to the source directory:**
+   ```bash
+   cd src
+   ```
+
+2. **Start all services:**
+   ```bash
+   docker-compose up -d
+   ```
+
+3. **Wait for services to initialize** (approximately 30-60 seconds for all health checks to pass):
+   ```bash
+   docker-compose ps
+   ```
+
+4. **Verify the system is running:**
+   ```bash
+   # Check PMS health
+   curl http://localhost:3000/health
+   
+   # Check MMS health
+   curl http://localhost:8000/health
+   ```
+
+### System Architecture
+
+The platform consists of the following microservices:
+
+| Service | Technology | Description |
+|---------|------------|-------------|
+| **PMS** (Production Management Service) | Node.js/Express | Order management, factory scheduling, gRPC server |
+| **MMS** (Monitoring & Maintenance Service) | Python/FastAPI | Heartbeat monitoring, fault detection, predictive maintenance |
+| **Bridge** | Node.js | MQTT to Kafka message bridge |
+| **Factory Simulators** (4 instances) | Node.js | Simulate factory heartbeats and failures |
+| **PostgreSQL** | Database | Orders, factory assignments |
+| **MongoDB** | Database | Heartbeats, monitoring events |
+| **Kafka** | Message Broker | Event streaming backbone |
+| **Mosquitto** | MQTT Broker | Factory heartbeat ingestion |
+
+### How the System Works
+
+The Industry 4.0 Production Platform implements several **availability tactics** to ensure reliable production management:
+
+#### Data Flow
+```
+┌─────────────┐    MQTT     ┌─────────┐    Kafka    ┌─────────┐
+│  Factories  │ ──────────► │ Bridge  │ ──────────► │   MMS   │
+│ (Heartbeats)│             └─────────┘             └────┬────┘
+└─────────────┘                                          │ gRPC
+                                                         ▼
+┌─────────────┐    HTTP     ┌─────────┐◄─────────────────┘
+│   Client    │ ◄─────────► │   PMS   │
+│  (Orders)   │             └─────────┘
+└─────────────┘
+```
+
+#### 1. Heartbeat Monitoring (Fault Detection)
+- Each factory simulator sends periodic **heartbeat messages** via MQTT every 1 second
+- Heartbeats contain: `factory_id`, `timestamp`, `status`, `cpu_usage`, `memory_usage`, `active_jobs`
+- The **Bridge** service subscribes to MQTT topics and forwards heartbeats to Kafka
+- **MMS** consumes heartbeats from Kafka and monitors factory health
+
+#### 2. Fault Detection
+- MMS tracks the last heartbeat timestamp for each factory
+- If no heartbeat is received within the **timeout threshold** (default: 5 seconds), the factory is marked as **DOWN**
+- Factories with degraded metrics (high CPU/memory) are marked as **DEGRADED**
+- Status changes are reported to PMS via **gRPC** for order reassignment
+
+#### 3. Predictive Maintenance (Risk Prediction)
+- MMS analyzes heartbeat patterns to predict potential failures
+- Risk factors include:
+  - **Heartbeat irregularity**: Variance in heartbeat intervals
+  - **Resource utilization**: Sustained high CPU or memory usage
+  - **Historical failures**: Past failure frequency
+- Risk scores are calculated and exposed via the `/api/predictions` endpoint
+
+#### 4. Automatic Failover
+- When a factory goes DOWN, MMS triggers the **Failover Manager**
+- Active orders assigned to the failed factory are identified
+- Orders are reassigned to healthy factories based on:
+  - Current factory load
+  - Factory status (UP preferred over DEGRADED)
+  - Order priority
+- PMS updates the database and notifies relevant components
+
+#### 5. Recovery Management
+- When a previously DOWN factory starts sending heartbeats again, it's marked as **recovering**
+- After a **stability period** (consistent heartbeats), the factory is restored to UP status
+- Recovered factories become available for new order assignments
+
+### Factory Simulation
+
+The platform includes 4 factory simulators that generate realistic production data:
+
+#### Factory Configuration
+
+| Factory | Failure Simulation | Failure Probability | Behavior |
+|---------|-------------------|---------------------|----------|
+| **factory-1** | Disabled | 0% | Always healthy, stable heartbeats |
+| **factory-2** | Disabled | 0% | Always healthy, stable heartbeats |
+| **factory-3** | Enabled | 10% | Occasional failures and recovery |
+| **factory-4** | Enabled | 5% | Rare failures, mostly stable |
+
+#### Simulated Metrics
+Each heartbeat includes simulated metrics:
+- **CPU Usage**: Random value 10-90% (spikes possible during "failures")
+- **Memory Usage**: Random value 20-80%
+- **Active Jobs**: Random count 0-10
+- **Temperature**: Simulated sensor reading
+
+#### Failure Modes
+When failure simulation is enabled, factories can exhibit:
+1. **Heartbeat Stop**: Factory stops sending heartbeats entirely (simulates crash)
+2. **Degraded Performance**: High CPU/memory values (simulates overload)
+3. **Intermittent Connectivity**: Irregular heartbeat intervals (simulates network issues)
+
+#### Customizing Simulation
+You can modify factory behavior via environment variables in `docker-compose.yml`:
+
+```yaml
+environment:
+  FACTORY_ID: factory-1
+  MQTT_BROKER_URL: mqtt://mosquitto:1883
+  HEARTBEAT_INTERVAL_MS: 1000      # Heartbeat frequency (ms)
+  SIMULATE_FAILURES: "true"         # Enable/disable failure simulation
+  FAILURE_PROBABILITY: 0.1          # Probability of failure (0.0 - 1.0)
+```
+
+### Service Endpoints
+
+#### PMS (Production Management Service) - Port 3000
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/health` | GET | Service health check |
+| `/api/orders` | GET | List all orders |
+| `/api/orders` | POST | Create a new order |
+| `/api/orders/:id` | GET | Get order by ID |
+| `/api/orders/:id/status` | PATCH | Update order status |
+| `/api/factories` | GET | List all factories |
+| `/api/factories/:id` | GET | Get factory by ID |
+| `/api/factories/:id/status` | PATCH | Update factory status |
+
+#### MMS (Monitoring & Maintenance Service) - Port 8000
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/health` | GET | Service health check |
+| `/health/detailed` | GET | Detailed health with dependencies |
+| `/api/status` | GET | All factory statuses |
+| `/api/status/{factory_id}` | GET | Specific factory status |
+| `/api/predictions` | GET | Risk predictions for all factories |
+| `/api/predictions/{factory_id}` | GET | Risk prediction for specific factory |
+
+### Monitoring and Logs
+
+**View all service logs:**
+```bash
+docker-compose logs -f
+```
+
+**View specific service logs:**
+```bash
+# Monitor fault detection and heartbeats
+docker-compose logs -f mms
+
+# Monitor order processing
+docker-compose logs -f pms
+
+# Monitor MQTT-Kafka bridge
+docker-compose logs -f bridge
+
+# Monitor a specific factory
+docker-compose logs -f factory-1
+```
+
+**Check container status:**
+```bash
+docker-compose ps
+```
+
+### Testing the System
+
+#### 1. Create a Test Order
+```bash
+curl -X POST http://localhost:3000/api/orders \
+  -H "Content-Type: application/json" \
+  -d '{"product_type": "widget", "quantity": 100, "priority": 1}'
+```
+
+#### 2. Check Factory Statuses
+```bash
+curl http://localhost:8000/api/status
+```
+
+#### 3. Get Risk Predictions
+```bash
+curl http://localhost:8000/api/predictions
+```
+
+#### 4. Simulate Factory Failure
+Factory-3 and Factory-4 are configured with failure simulation enabled. Watch the MMS logs to see fault detection and failover in action:
+```bash
+docker-compose logs -f mms
+```
+
+#### 5. Check Order Assignments
+```bash
+curl http://localhost:3000/api/orders
+```
+
+### Stopping the System
+
+**Stop all services:**
+```bash
+docker-compose down
+```
+
+**Stop and remove all data (volumes):**
+```bash
+docker-compose down -v
+```
+
+**Rebuild and restart (after code changes):**
+```bash
+docker-compose up -d --build
+```
 
 ## Compiling Latex
 You can compile latex source files to PDF locally. Multiple options are available; choose the one you prefer.
