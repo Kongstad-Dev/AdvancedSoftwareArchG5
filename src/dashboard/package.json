@@ -1,0 +1,12 @@
+{
+  "name": "industry4-dashboard",
+  "version": "1.0.0",
+  "description": "Real-time dashboard for Industry 4.0 Production Platform",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2"
+  }
+}

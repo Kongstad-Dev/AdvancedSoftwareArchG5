@@ -1,0 +1,12 @@
+{
+  "name": "order-generator",
+  "version": "1.0.0",
+  "description": "Automated order generation and failover simulation",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "axios": "^1.6.0"
+  }
+}

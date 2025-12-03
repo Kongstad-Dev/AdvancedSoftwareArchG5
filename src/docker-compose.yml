@@ -22,7 +22,7 @@ services:
     networks:
       - industry4-network
 
-  # MongoDB - Heartbeats, anomalies, factory status
+  # MongoDB - Sensor readings, factory health
   mongodb:
     image: mongo:6
     container_name: industry4-mongodb
@@ -132,7 +132,7 @@ services:
     networks:
       - industry4-network
 
-  # MMS - Monitoring & Maintenance System (Python)
+  # MMS - Monitoring & Maintenance System (Python) - Sensor-based monitoring
   mms:
     build:
       context: .
@@ -152,7 +152,7 @@ services:
       KAFKA_BROKERS: kafka:29092
       PMS_GRPC_HOST: pms
       PMS_GRPC_PORT: 50051
-      HEARTBEAT_TIMEOUT_SECONDS: 3
+      SENSOR_TIMEOUT_SECONDS: 5
       HEALTH_CHECK_PORT: 8000
     volumes:
       - ./proto:/app/proto:ro
@@ -164,7 +164,7 @@ services:
     networks:
       - industry4-network
 
-  # MQTT to Kafka Bridge
+  # MQTT to Kafka Bridge - Sensor readings
   bridge:
     build:
       context: .
@@ -178,12 +178,11 @@ services:
     environment:
       MQTT_BROKER_URL: mqtt://mosquitto:1883
       KAFKA_BROKERS: kafka:29092
-      KAFKA_TOPIC: factory.heartbeat
-      MQTT_TOPIC: factory/+/heartbeat
+      KAFKA_TOPIC: factory.sensors
     networks:
       - industry4-network
 
-  # Factory Simulators
+  # Factory Simulators - Sensor-based
   factory-1:
     build:
       context: .
@@ -192,12 +191,15 @@ services:
     depends_on:
       mosquitto:
         condition: service_healthy
+      pms:
+        condition: service_healthy
     environment:
       FACTORY_ID: factory-1
       MQTT_BROKER_URL: mqtt://mosquitto:1883
-      HEARTBEAT_INTERVAL_MS: 1000
-      SIMULATE_FAILURES: "false"
-      FAILURE_PROBABILITY: 0.0
+      SENSOR_READING_INTERVAL_MS: 1000
+      SIMULATE_FAILURES: "true"
+      FAILURE_PROBABILITY: 0.005
+      PMS_URL: http://pms:3000
     networks:
       - industry4-network
 
@@ -209,12 +211,15 @@ services:
     depends_on:
       mosquitto:
         condition: service_healthy
+      pms:
+        condition: service_healthy
     environment:
       FACTORY_ID: factory-2
       MQTT_BROKER_URL: mqtt://mosquitto:1883
-      HEARTBEAT_INTERVAL_MS: 1000
-      SIMULATE_FAILURES: "false"
-      FAILURE_PROBABILITY: 0.0
+      SENSOR_READING_INTERVAL_MS: 1000
+      SIMULATE_FAILURES: "true"
+      FAILURE_PROBABILITY: 0.005
+      PMS_URL: http://pms:3000
     networks:
       - industry4-network
 
@@ -226,12 +231,15 @@ services:
     depends_on:
       mosquitto:
         condition: service_healthy
+      pms:
+        condition: service_healthy
     environment:
       FACTORY_ID: factory-3
       MQTT_BROKER_URL: mqtt://mosquitto:1883
-      HEARTBEAT_INTERVAL_MS: 1000
+      SENSOR_READING_INTERVAL_MS: 1000
       SIMULATE_FAILURES: "true"
-      FAILURE_PROBABILITY: 0.1
+      FAILURE_PROBABILITY: 0.01
+      PMS_URL: http://pms:3000
     networks:
       - industry4-network
 
@@ -243,12 +251,54 @@ services:
     depends_on:
       mosquitto:
         condition: service_healthy
+      pms:
+        condition: service_healthy
     environment:
       FACTORY_ID: factory-4
       MQTT_BROKER_URL: mqtt://mosquitto:1883
-      HEARTBEAT_INTERVAL_MS: 1000
+      SENSOR_READING_INTERVAL_MS: 1000
       SIMULATE_FAILURES: "true"
-      FAILURE_PROBABILITY: 0.05
+      FAILURE_PROBABILITY: 0.015
+      PMS_URL: http://pms:3000
+    networks:
+      - industry4-network
+
+  # Dashboard - Real-time monitoring UI
+  dashboard:
+    build:
+      context: .
+      dockerfile: dashboard/Dockerfile
+    container_name: industry4-dashboard
+    depends_on:
+      - mms
+      - pms
+    ports:
+      - "8080:8080"
+    environment:
+      PORT: 8080
+      MMS_URL: http://mms:8000
+      PMS_URL: http://pms:3000
+    networks:
+      - industry4-network
+
+  # Order Generator - Automated order creation and failover
+  order-generator:
+    build:
+      context: .
+      dockerfile: order-generator/Dockerfile
+    container_name: industry4-order-generator
+    depends_on:
+      pms:
+        condition: service_healthy
+      mms:
+        condition: service_healthy
+    environment:
+      PMS_URL: http://pms:3000
+      MMS_URL: http://mms:8000
+      ORDER_INTERVAL_MS: 5000
+      MAX_ORDERS_PER_FACTORY: 2
+      MIN_COMPLETION_TIME: 5000
+      MAX_COMPLETION_TIME: 10000
     networks:
       - industry4-network
 

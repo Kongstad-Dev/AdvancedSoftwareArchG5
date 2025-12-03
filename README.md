@@ -84,13 +84,27 @@ You are allowed to have your DockerFiles at root level for build context reasons
 
 ## Running the Industry 4.0 Production Platform
 
-This project implements an Industry 4.0 Production Platform demonstrating availability tactics including heartbeat monitoring, fault detection, predictive maintenance, and automatic failover.
+This project implements an Industry 4.0 Production Platform demonstrating availability tactics including **sensor-based monitoring**, fault detection, and automatic failover at the sensor level.
+
+### Scope
+
+**What's Included:**
+- ✅ **Three sensor families**: Temperature, Level, and Quality (pH, color, weight)
+- ✅ **Two-tier health model**: Sensor status → Factory health
+- ✅ **Factory health bands**: Operational (≥80%), Degraded (50-79%), Critical (20-49%), Down (<20%)
+- ✅ **Automatic failover**: Orders reassigned when factory health degrades
+
+**What's NOT Included (by design):**
+- ❌ No actuators (valves, pumps, motors)
+- ❌ No pressure or flow sensors
+- ❌ No production lines or recipes
+- ❌ No recipe-based validation
 
 ### Prerequisites
 
 - **Docker** (v20.10+) and **Docker Compose** (v2.0+)
 - At least 4GB of available RAM
-- Ports 3000, 8000, 1883, 5432, 27017, 9092 available
+- Ports 3000, 8000, 1883, 5432, 27018, 9092 available
 
 ### Quick Start
 
@@ -116,110 +130,283 @@ This project implements an Industry 4.0 Production Platform demonstrating availa
    
    # Check MMS health
    curl http://localhost:8000/health
+   
+   # Check all factory health
+   curl http://localhost:8000/api/factories
    ```
+
+5. **Open the Dashboard:**
+   Open your browser and navigate to: **http://localhost:8080**
+
+### Dashboard
+
+The platform includes a real-time monitoring dashboard that displays:
+
+- **System Overview**: Total factories, operational count, total sensors, active orders
+- **Factory Health Cards**: Each factory shows:
+  - Health percentage with color-coded status bar
+  - Sensor counts (OK/Warning/Failed)
+  - Visual sensor grid by type (Temperature, Level, Quality)
+- **Recent Orders**: Latest orders with status and assignment
+- **Auto-refresh**: Updates every 2 seconds
+
+![Dashboard](images/dashboard.png)
 
 ### System Architecture
 
 The platform consists of the following microservices:
 
-| Service | Technology | Description |
-|---------|------------|-------------|
-| **PMS** (Production Management Service) | Node.js/Express | Order management, factory scheduling, gRPC server |
-| **MMS** (Monitoring & Maintenance Service) | Python/FastAPI | Heartbeat monitoring, fault detection, predictive maintenance |
-| **Bridge** | Node.js | MQTT to Kafka message bridge |
-| **Factory Simulators** (4 instances) | Node.js | Simulate factory heartbeats and failures |
-| **PostgreSQL** | Database | Orders, factory assignments |
-| **MongoDB** | Database | Heartbeats, monitoring events |
-| **Kafka** | Message Broker | Event streaming backbone |
-| **Mosquitto** | MQTT Broker | Factory heartbeat ingestion |
+| Service | Technology | Port | Description |
+|---------|------------|------|-------------|
+| **Dashboard** | Node.js/Express | 8080 | Real-time monitoring UI |
+| **Order Generator** | Node.js | - | Automated order creation and intelligent failover management |
+| **PMS** (Production Management Service) | Node.js/Express | 3000 | Order management, factory scheduling, gRPC server |
+| **MMS** (Monitoring & Maintenance Service) | Python/FastAPI | 8000 | Sensor monitoring, factory health calculation, failover triggers |
+| **Bridge** | Node.js | - | MQTT to Kafka message bridge for sensor data |
+| **Factory Simulators** (4 instances) | Node.js | - | Simulate 20 sensors per factory (temperature, level, quality) |
+| **PostgreSQL** | Database | 5432 | Orders, factory assignments, activity logs |
+| **MongoDB** | Database | 27018 | Sensor readings, factory health status, events, order requests |
+| **Kafka** | Message Broker | 9092 | Event streaming backbone |
+| **Mosquitto** | MQTT Broker | 1883 | Sensor data ingestion |
 
 ### How the System Works
 
-The Industry 4.0 Production Platform implements several **availability tactics** to ensure reliable production management:
+The Industry 4.0 Production Platform implements a **two-tier health model**: Sensor Level → Factory Level.
 
 #### Data Flow
 ```
-┌─────────────┐    MQTT     ┌─────────┐    Kafka    ┌─────────┐
-│  Factories  │ ──────────► │ Bridge  │ ──────────► │   MMS   │
-│ (Heartbeats)│             └─────────┘             └────┬────┘
-└─────────────┘                                          │ gRPC
-                                                         ▼
-┌─────────────┐    HTTP     ┌─────────┐◄─────────────────┘
-│   Client    │ ◄─────────► │   PMS   │
-│  (Orders)   │             └─────────┘
-└─────────────┘
+                                                    ┌────────────┐
+                                                    │  MongoDB   │
+                                                    │  - Events  │
+                                                    │  - Orders  │
+                                                    │  - Sensors │
+                                                    └─────▲──────┘
+                                                          │
+┌─────────────┐    MQTT     ┌─────────┐    Kafka    ┌─────┴─────┐
+│  Factories  │ ──────────► │ Bridge  │ ──────────► │    MMS    │
+│  (Sensors)  │             └─────────┘             └─────┬─────┘
+└─────────────┘                                           │ gRPC
+                                                          ▼
+┌─────────────┐                                    ┌─────────────┐
+│   Order     │ ──────────────────────────────────►│     PMS     │
+│  Generator  │          HTTP API                  └──────┬──────┘
+└─────────────┘                                           │
+      │                                                   ▼
+      │                                            ┌────────────┐
+      └───────────────────────────────────────────►│ PostgreSQL │
+              Query Health & Reschedule            │  - Orders  │
+                                                    │  - Factory │
+                                                    │  - Logs    │
+                                                    └────────────┘
 ```
 
-#### 1. Heartbeat Monitoring (Fault Detection)
-- Each factory simulator sends periodic **heartbeat messages** via MQTT every 1 second
-- Heartbeats contain: `factory_id`, `timestamp`, `status`, `cpu_usage`, `memory_usage`, `active_jobs`
-- The **Bridge** service subscribes to MQTT topics and forwards heartbeats to Kafka
-- **MMS** consumes heartbeats from Kafka and monitors factory health
+#### Order Generation & Assignment
+The **Order Generator** service automates the production simulation:
 
-#### 2. Fault Detection
-- MMS tracks the last heartbeat timestamp for each factory
-- If no heartbeat is received within the **timeout threshold** (default: 5 seconds), the factory is marked as **DOWN**
-- Factories with degraded metrics (high CPU/memory) are marked as **DEGRADED**
-- Status changes are reported to PMS via **gRPC** for order reassignment
+1. **Automatic Order Creation**: Generates orders every 15 seconds with random:
+   - Product types: cola, pepsi, fanta, sprite, water
+   - Quantities: 100-1000 units
+   - Priority levels: 1-5
 
-#### 3. Predictive Maintenance (Risk Prediction)
-- MMS analyzes heartbeat patterns to predict potential failures
-- Risk factors include:
-  - **Heartbeat irregularity**: Variance in heartbeat intervals
-  - **Resource utilization**: Sustained high CPU or memory usage
-  - **Historical failures**: Past failure frequency
-- Risk scores are calculated and exposed via the `/api/predictions` endpoint
+2. **Health-Based Assignment**: Before creating each order:
+   - Queries MMS for current factory health status
+   - Filters for OPERATIONAL (≥80%) or DEGRADED (50-79%) factories
+   - Assigns order to the **healthiest available factory**
+   - Rejects order if no healthy factories available
 
-#### 4. Automatic Failover
-- When a factory goes DOWN, MMS triggers the **Failover Manager**
-- Active orders assigned to the failed factory are identified
-- Orders are reassigned to healthy factories based on:
-  - Current factory load
-  - Factory status (UP preferred over DEGRADED)
-  - Order priority
-- PMS updates the database and notifies relevant components
+3. **Automatic Failover**: Monitors factory health every 10 seconds:
+   - Detects factories in CRITICAL (<50%) or DOWN (<20%) status
+   - Retrieves all orders assigned to failing factories
+   - Automatically reschedules orders to healthiest available factory
+   - Logs all failover operations
 
-#### 5. Recovery Management
-- When a previously DOWN factory starts sending heartbeats again, it's marked as **recovering**
-- After a **stability period** (consistent heartbeats), the factory is restored to UP status
-- Recovered factories become available for new order assignments
+This creates a closed-loop simulation where:
+- Sensor data → Factory health → Order assignment
+- Failed sensors → Low health → Automatic order rescheduling
+
+### Storage Architecture
+
+The platform uses two databases optimized for different purposes:
+
+#### PostgreSQL
+Relational data requiring transactional integrity:
+
+| Table | Purpose |
+|-------|---------|
+| `factories` | Factory registry with `health_percentage` and `status` |
+| `orders` | Order management (unchanged) |
+| `activity_logs` | System activity audit trail |
+
+**Factories Table Schema:**
+| Field | Type | Description |
+|-------|------|-------------|
+| `id` | VARCHAR | Factory identifier (factory-1, factory-2, etc.) |
+| `name` | VARCHAR | Display name |
+| `health_percentage` | DECIMAL | Current health % (0-100) |
+| `status` | VARCHAR | OPERATIONAL, DEGRADED, CRITICAL, DOWN |
+| `updated_at` | TIMESTAMP | Last status update |
+
+**Activity Logs Table Schema:**
+| Field | Type | Description |
+|-------|------|-------------|
+| `id` | SERIAL | Primary key |
+| `timestamp` | TIMESTAMP | When the activity occurred |
+| `service` | VARCHAR | Service that generated the log (PMS, MMS) |
+| `action` | VARCHAR | Action type (CREATE, UPDATE, DELETE, ASSIGN, FAILOVER) |
+| `entity_type` | VARCHAR | Entity involved (order, factory) |
+| `entity_id` | VARCHAR | ID of the affected entity |
+| `details` | JSONB | Additional context and metadata |
+
+#### MongoDB
+High-volume sensor data and events:
+
+**Sensor Readings Collection (`sensor_readings`):**
+| Field | Type | Description |
+|-------|------|-------------|
+| `_id` | ObjectId | Document ID |
+| `factory_id` | String | Factory identifier |
+| `sensor_id` | String | Sensor identifier |
+| `sensor_type` | String | temperature, level, or quality |
+| `zone` | String | Sensor zone/location |
+| `value` | Number | Reading value |
+| `unit` | String | Unit of measurement |
+| `status` | String | OK, WARNING, FAILED |
+| `timestamp` | DateTime | Reading timestamp |
+
+**Factory Health Snapshots Collection (`factory_health`):**
+| Field | Type | Description |
+|-------|------|-------------|
+| `_id` | ObjectId | Document ID |
+| `factory_id` | String | Factory identifier |
+| `health_percentage` | Number | Health % (0-100) |
+| `status` | String | OPERATIONAL, DEGRADED, CRITICAL, DOWN |
+| `ok_sensors` | Number | Count of OK sensors |
+| `warning_sensors` | Number | Count of WARNING sensors |
+| `failed_sensors` | Number | Count of FAILED sensors |
+| `total_sensors` | Number | Total sensor count |
+| `timestamp` | DateTime | Snapshot timestamp |
+
+**Events Collection (`events`):**
+| Field | Type | Description |
+|-------|------|-------------|
+| `_id` | ObjectId | Document ID |
+| `event_type` | String | SENSOR_WARNING, SENSOR_FAILED, HEALTH_CHANGE, FAILOVER |
+| `factory_id` | String | Associated factory |
+| `severity` | String | INFO, WARNING, CRITICAL |
+| `data` | Object | Event-specific payload |
+| `timestamp` | DateTime | Event timestamp |
+
+**Order Requests Collection (`order_requests`):**
+| Field | Type | Description |
+|-------|------|-------------|
+| `_id` | ObjectId | Document ID |
+| `request_id` | String | Unique request identifier |
+| `order_id` | Number | Associated order ID (from PostgreSQL) |
+| `action` | String | CREATE, UPDATE, ASSIGN, COMPLETE, CANCEL |
+| `order_data` | Object | Order details (product_type, quantity, priority) |
+| `assigned_factory` | String | Factory assigned to the order |
+| `status` | String | Request status (PENDING, COMPLETED, FAILED) |
+| `timestamp` | DateTime | Request timestamp |
+
+**Alerts Severity Mapping:**
+| Event | Severity |
+|-------|----------|
+| Sensor WARNING | INFO |
+| Factory DEGRADED | WARNING |
+| Factory CRITICAL/DOWN | CRITICAL |
+
+### Sensor-Based Monitoring
+
+#### 1. Sensor Types
+Each factory simulates **20 sensors**:
+- **6 Temperature Sensors**: Monitor mixing tanks, fermentation vessels, storage
+- **6 Level Sensors**: Monitor tank fill levels
+- **8 Quality Sensors**: Monitor pH (2), color (2), weight (4)
+
+Sensors publish readings every 1 second via MQTT topics:
+- `factory/{id}/sensors/temperature/{sensor_id}`
+- `factory/{id}/sensors/level/{sensor_id}`
+- `factory/{id}/sensors/quality/{sensor_id}`
+
+#### 2. Sensor Health States
+Each sensor has one of three states:
+- **OK**: Reading within normal range
+- **WARNING**: Reading near threshold limits
+- **FAILED**: No reading received (timeout) or completely out of range
+
+**MMS Monitoring Rules:**
+| Sensor Type | Rule | Result |
+|-------------|------|--------|
+| **Temperature** | Missing heartbeat > 5 seconds | FAILED |
+| **Temperature** | Value outside 15-30°C (zone-specific) | WARNING/FAILED |
+| **Level** | Value outside 20-80% range | WARNING |
+| **Level** | Value at 0% or 100%, or implausible jump | FAILED |
+| **Quality (pH)** | Value outside 6.5-7.5 | WARNING |
+| **Quality (pH)** | Extreme values (<5.0 or >9.0) | FAILED |
+| **Quality (Color)** | Value outside 40-60 index | WARNING |
+| **Quality (Weight)** | Value outside 490-510g | WARNING |
+
+#### 3. Factory Health Calculation
+Factory health is calculated as: **% of sensors in OK state**
+
+| Health % | Factory Status | Description |
+|----------|----------------|-------------|
+| ≥ 80% | **OPERATIONAL** | Normal production |
+| 50-79% | **DEGRADED** | Reduced capacity |
+| 20-49% | **CRITICAL** | Minimal operation |
+| < 20% | **DOWN** | Cannot produce |
+
+#### 4. Order Assignment Based on Factory Status
+PMS uses factory status bands to control order assignment:
+
+| Factory Status | Order Assignment Behavior |
+|----------------|---------------------------|
+| **OPERATIONAL** | Normal assignment - factory receives new orders |
+| **DEGRADED** | Reduced assignment - factory deprioritized for new orders |
+| **CRITICAL/DOWN** | Paused - no new orders; existing orders rescheduled elsewhere |
+
+#### 5. Automatic Failover
+- When factory health drops to CRITICAL or DOWN, MMS notifies PMS via gRPC
+- PMS stops assigning new orders to affected factory
+- Existing orders can be reassigned to healthy factories
+
+#### 6. Recovery
+- When sensors resume sending readings, they're marked as OK
+- Factory health automatically recalculates
+- Once health returns to OPERATIONAL, factory becomes available for orders
 
 ### Factory Simulation
 
-The platform includes 4 factory simulators that generate realistic production data:
+Each factory simulator generates sensor data for 20 sensors:
+
+#### Sensors Per Factory
+| Type | Count | Zones/Names | Normal Range |
+|------|-------|-------------|--------------|
+| **Temperature** | 6 | mixing-tank-1/2, fermentation-1/2, storage-1/2 | 15-30°C |
+| **Level** | 6 | tank-1 through tank-6 | 20-80% |
+| **Quality (pH)** | 2 | ph-1, ph-2 | 6.5-7.5 pH |
+| **Quality (Color)** | 2 | color-1, color-2 | 40-60 index |
+| **Quality (Weight)** | 4 | weight-1 through weight-4 | 490-510g |
 
 #### Factory Configuration
 
 | Factory | Failure Simulation | Failure Probability | Behavior |
 |---------|-------------------|---------------------|----------|
-| **factory-1** | Disabled | 0% | Always healthy, stable heartbeats |
-| **factory-2** | Disabled | 0% | Always healthy, stable heartbeats |
-| **factory-3** | Enabled | 10% | Occasional failures and recovery |
-| **factory-4** | Enabled | 5% | Rare failures, mostly stable |
-
-#### Simulated Metrics
-Each heartbeat includes simulated metrics:
-- **CPU Usage**: Random value 10-90% (spikes possible during "failures")
-- **Memory Usage**: Random value 20-80%
-- **Active Jobs**: Random count 0-10
-- **Temperature**: Simulated sensor reading
-
-#### Failure Modes
-When failure simulation is enabled, factories can exhibit:
-1. **Heartbeat Stop**: Factory stops sending heartbeats entirely (simulates crash)
-2. **Degraded Performance**: High CPU/memory values (simulates overload)
-3. **Intermittent Connectivity**: Irregular heartbeat intervals (simulates network issues)
+| **factory-1** | Disabled | 0% | All 20 sensors always healthy |
+| **factory-2** | Disabled | 0% | All 20 sensors always healthy |
+| **factory-3** | Enabled | 2% per sensor | Occasional sensor failures |
+| **factory-4** | Enabled | 1% per sensor | Rare sensor failures |
 
 #### Customizing Simulation
-You can modify factory behavior via environment variables in `docker-compose.yml`:
+Modify factory behavior via environment variables in `docker-compose.yml`:
 
 ```yaml
 environment:
   FACTORY_ID: factory-1
   MQTT_BROKER_URL: mqtt://mosquitto:1883
-  HEARTBEAT_INTERVAL_MS: 1000      # Heartbeat frequency (ms)
-  SIMULATE_FAILURES: "true"         # Enable/disable failure simulation
-  FAILURE_PROBABILITY: 0.1          # Probability of failure (0.0 - 1.0)
+  SENSOR_READING_INTERVAL_MS: 1000  # Reading frequency (ms)
+  SIMULATE_FAILURES: "true"          # Enable/disable sensor failures
+  FAILURE_PROBABILITY: 0.02          # Probability of sensor failure (0.0 - 1.0)
 ```
 
 ### Service Endpoints
@@ -241,10 +428,9 @@ environment:
 |----------|--------|-------------|
 | `/health` | GET | Service health check |
 | `/health/detailed` | GET | Detailed health with dependencies |
-| `/api/status` | GET | All factory statuses |
-| `/api/status/{factory_id}` | GET | Specific factory status |
-| `/api/predictions` | GET | Risk predictions for all factories |
-| `/api/predictions/{factory_id}` | GET | Risk prediction for specific factory |
+| `/api/factories` | GET | All factory health statuses |
+| `/api/factories/{factory_id}` | GET | Specific factory health status |
+| `/api/sensors/{factory_id}` | GET | All sensors for a specific factory |
 
 ### Monitoring and Logs
 
@@ -255,16 +441,16 @@ docker-compose logs -f
 
 **View specific service logs:**
 ```bash
-# Monitor fault detection and heartbeats
+# Monitor sensor processing and factory health
 docker-compose logs -f mms
 
 # Monitor order processing
 docker-compose logs -f pms
 
-# Monitor MQTT-Kafka bridge
+# Monitor MQTT-Kafka bridge (sensor data)
 docker-compose logs -f bridge
 
-# Monitor a specific factory
+# Monitor a specific factory's sensors
 docker-compose logs -f factory-1
 ```
 
@@ -282,18 +468,45 @@ curl -X POST http://localhost:3000/api/orders \
   -d '{"product_type": "widget", "quantity": 100, "priority": 1}'
 ```
 
-#### 2. Check Factory Statuses
+#### 2. Check Factory Health
 ```bash
-curl http://localhost:8000/api/status
+# All factories
+curl http://localhost:8000/api/factories
+
+# Specific factory
+curl http://localhost:8000/api/factories/factory-1
 ```
 
-#### 3. Get Risk Predictions
+#### 3. Check Sensor Status
 ```bash
-curl http://localhost:8000/api/predictions
+# All sensors for a factory
+curl http://localhost:8000/api/sensors/factory-1
 ```
 
-#### 4. Simulate Factory Failure
-Factory-3 and Factory-4 are configured with failure simulation enabled. Watch the MMS logs to see fault detection and failover in action:
+#### 4. Simulate Sensor Failures
+Factory-3 and Factory-4 are configured with failure simulation enabled. The simulator supports multiple failure modes:
+
+**Failure Modes:**
+1. **Heartbeat Miss (No Reading)**: Sensor stops sending readings → FAILED after timeout (default: 5 seconds)
+2. **Out-of-Range Values**: Values near threshold limits → WARNING
+3. **Far Out-of-Range Values**: Values completely outside valid range → FAILED
+4. **Random Drop/Recover**: Sensors randomly fail and recover to demonstrate degraded/recovery states
+
+**How to Trigger Failures:**
+- Watch natural failures in factory-3/4 (configured with failure simulation)
+- Stop a factory container to simulate complete sensor loss:
+  ```bash
+  docker-compose stop factory-3
+  # Watch MMS detect the timeout and mark factory as DOWN
+  docker-compose logs -f mms
+  # Restart to see recovery
+  docker-compose start factory-3
+  ```
+
+**Watch the MMS logs to observe:**
+- Sensor status changes (OK → WARNING → FAILED)
+- Factory health percentage updates
+- Factory status band changes (OPERATIONAL → DEGRADED → CRITICAL → DOWN)
 ```bash
 docker-compose logs -f mms
 ```

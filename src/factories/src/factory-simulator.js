@@ -1,11 +1,14 @@
 /**
  * Factory Simulator
  * 
- * Simulates a factory by publishing heartbeats to MQTT.
- * Can simulate failures, degraded states, and various metrics.
+ * Simulates a factory by publishing sensor readings to MQTT.
+ * Sensors: Temperature (6), Level (6), Quality (8) = 20 sensors per factory
+ * Can simulate sensor failures and warning states.
+ * Load affects sensor readings - more orders = higher temperatures, more wear.
  */
 
 const mqtt = require('mqtt');
+const axios = require('axios');
 const winston = require('winston');
 const config = require('./config');
 
@@ -30,25 +33,82 @@ const logger = winston.createLogger({
 // Factory configuration from environment
 const factoryId = process.env.FACTORY_ID || 'factory-1';
 const mqttBrokerUrl = process.env.MQTT_BROKER_URL || config.mqtt.brokerUrl;
-const heartbeatIntervalMs = parseInt(process.env.HEARTBEAT_INTERVAL_MS) || config.heartbeat.intervalMs;
+const sensorReadingIntervalMs = parseInt(process.env.SENSOR_READING_INTERVAL_MS) || config.sensorReadingIntervalMs;
 const simulateFailures = process.env.SIMULATE_FAILURES === 'true';
 const failureProbability = parseFloat(process.env.FAILURE_PROBABILITY) || config.simulation.failureProbability;
+const pmsUrl = process.env.PMS_URL || 'http://pms:3000';
 
 // State
 let mqttClient = null;
-let heartbeatInterval = null;
-let isInFailureState = false;
-let isDegraded = false;
-let failureEndTime = null;
-let heartbeatCount = 0;
+let sensorInterval = null;
+
+// Factory load state (affected by orders)
+let currentLoad = {
+    orderCount: 0,
+    maxCapacity: 2,
+    loadFactor: 0 // 0.0 to 1.0
+};
+
+// Initialize sensors state
+const sensors = {
+    temperature: [],
+    level: [],
+    quality: []
+};
 
 // Statistics
 const stats = {
-    heartbeatsSent: 0,
+    readingsSent: 0,
     failures: 0,
+    warnings: 0,
     reconnects: 0,
     errors: 0
 };
+
+/**
+ * Initialize all sensors for the factory
+ */
+function initializeSensors() {
+    // Temperature sensors
+    for (let i = 0; i < config.sensors.temperature.count; i++) {
+        sensors.temperature.push({
+            id: `${factoryId}-temp-${i + 1}`,
+            type: 'temperature',
+            zone: config.sensors.temperature.zones[i],
+            status: 'OK',
+            failureEndTime: null
+        });
+    }
+    
+    // Level sensors
+    for (let i = 0; i < config.sensors.level.count; i++) {
+        sensors.level.push({
+            id: `${factoryId}-level-${i + 1}`,
+            type: 'level',
+            zone: config.sensors.level.zones[i],
+            status: 'OK',
+            failureEndTime: null
+        });
+    }
+    
+    // Quality sensors
+    for (const qualitySensor of config.sensors.quality.types) {
+        sensors.quality.push({
+            id: `${factoryId}-${qualitySensor.name}`,
+            type: 'quality',
+            metric: qualitySensor.metric,
+            name: qualitySensor.name,
+            normalRange: qualitySensor.normalRange,
+            warningRange: qualitySensor.warningRange,
+            unit: qualitySensor.unit,
+            status: 'OK',
+            failureEndTime: null
+        });
+    }
+    
+    const totalSensors = sensors.temperature.length + sensors.level.length + sensors.quality.length;
+    logger.info(`Initialized ${totalSensors} sensors for ${factoryId}`);
+}
 
 /**
  * Generate random number in range
@@ -58,121 +118,217 @@ function randomInRange(min, max) {
 }
 
 /**
- * Generate simulated metrics
+ * Check and update sensor failure states
+ * Load affects failure probability
  */
-function generateMetrics() {
-    const metricsConfig = config.metrics;
-    
-    let cpuUsage, memoryUsage, latencyMs, errorCount;
-    
-    if (isInFailureState) {
-        // During failure, don't send metrics (factory is "down")
-        return null;
-    } else if (isDegraded) {
-        // Degraded state - elevated metrics
-        cpuUsage = randomInRange(metricsConfig.cpu.max, metricsConfig.cpu.spike);
-        memoryUsage = randomInRange(metricsConfig.memory.max, metricsConfig.memory.spike);
-        latencyMs = randomInRange(metricsConfig.latency.max, metricsConfig.latency.spike);
-        errorCount = Math.floor(randomInRange(metricsConfig.errors.degraded, metricsConfig.errors.spike));
-    } else {
-        // Normal state
-        cpuUsage = randomInRange(metricsConfig.cpu.min, metricsConfig.cpu.max);
-        memoryUsage = randomInRange(metricsConfig.memory.min, metricsConfig.memory.max);
-        latencyMs = randomInRange(metricsConfig.latency.min, metricsConfig.latency.max);
-        errorCount = metricsConfig.errors.normal;
-    }
-    
-    return {
-        cpu_usage: parseFloat(cpuUsage.toFixed(2)),
-        memory_usage: parseFloat(memoryUsage.toFixed(2)),
-        latency_ms: parseFloat(latencyMs.toFixed(2)),
-        error_count: errorCount
-    };
-}
-
-/**
- * Create heartbeat message
- */
-function createHeartbeatMessage() {
-    const metrics = generateMetrics();
-    
-    if (metrics === null) {
-        return null;  // Factory is in failure state
-    }
-    
-    return {
-        factory_id: factoryId,
-        timestamp: new Date().toISOString(),
-        sequence: ++heartbeatCount,
-        metrics: metrics,
-        status: isDegraded ? 'DEGRADED' : 'UP'
-    };
-}
-
-/**
- * Check and update failure state
- */
-function updateFailureState() {
+function updateSensorStates() {
     const now = Date.now();
     
-    // Check if we should exit failure state
-    if (isInFailureState && failureEndTime && now >= failureEndTime) {
-        isInFailureState = false;
-        failureEndTime = null;
-        logger.info(`Factory ${factoryId} recovered from failure`);
-    }
+    // Calculate effective failure probability based on load
+    // Higher load = higher failure probability
+    const loadMultiplier = 1 + (currentLoad.loadFactor * 2); // Up to 3x failure rate at full load
+    const effectiveFailureProbability = failureProbability * loadMultiplier;
     
-    // Check if we should enter failure state
-    if (!isInFailureState && simulateFailures) {
-        if (Math.random() < failureProbability) {
-            isInFailureState = true;
-            failureEndTime = now + config.simulation.failureDurationMs;
-            stats.failures++;
-            logger.warn(`Factory ${factoryId} entering failure state for ${config.simulation.failureDurationMs}ms`);
-        }
-    }
-    
-    // Check for degraded state
-    if (!isInFailureState && config.simulation.simulateDegraded) {
-        if (Math.random() < config.simulation.degradedProbability) {
-            isDegraded = !isDegraded;
-            logger.info(`Factory ${factoryId} degraded state: ${isDegraded}`);
+    // Process all sensor types
+    for (const sensorType of Object.values(sensors)) {
+        for (const sensor of sensorType) {
+            // Check if sensor should recover from failure
+            if (sensor.status === 'FAILED' && sensor.failureEndTime && now >= sensor.failureEndTime) {
+                sensor.status = 'OK';
+                sensor.failureEndTime = null;
+                logger.info(`Sensor ${sensor.id} recovered`);
+            }
+            
+            // Check if sensor should fail (only if not already failed)
+            if (sensor.status !== 'FAILED' && simulateFailures && Math.random() < effectiveFailureProbability) {
+                sensor.status = 'FAILED';
+                sensor.failureEndTime = now + config.simulation.failureDurationMs;
+                stats.failures++;
+                logger.warn(`Sensor ${sensor.id} failed (load factor: ${currentLoad.loadFactor.toFixed(2)}), will recover in ${config.simulation.failureDurationMs}ms`);
+            }
         }
     }
 }
 
 /**
- * Send heartbeat to MQTT
+ * Generate temperature sensor reading
+ * Load affects temperature - more orders = higher temperatures
  */
-function sendHeartbeat() {
-    updateFailureState();
-    
-    const message = createHeartbeatMessage();
-    
-    if (message === null) {
-        logger.debug(`Factory ${factoryId} in failure state, skipping heartbeat`);
-        return;
+function generateTemperatureReading(sensor) {
+    if (sensor.status === 'FAILED') {
+        return null; // Failed sensor sends no data
     }
     
-    const topic = `${config.mqtt.topicPrefix}/${factoryId}/${config.mqtt.topicSuffix}`;
+    const tempConfig = config.sensors.temperature;
+    let value;
+    let status = 'OK';
+    
+    // Calculate temperature increase based on load (up to 5°C increase at full load)
+    const loadTempIncrease = currentLoad.loadFactor * 5;
+    
+    // Higher chance of warning at higher load
+    const warningChance = 0.1 + (currentLoad.loadFactor * 0.2); // 10-30% warning chance
+    
+    if (Math.random() < warningChance) {
+        // Generate value in warning range (either low or high)
+        if (Math.random() < 0.5) {
+            value = randomInRange(tempConfig.warningRange.min, tempConfig.normalRange.min);
+        } else {
+            value = randomInRange(tempConfig.normalRange.max, tempConfig.warningRange.max) + loadTempIncrease;
+        }
+        status = 'WARNING';
+        stats.warnings++;
+    } else {
+        // Normal value with load-based increase
+        value = randomInRange(tempConfig.normalRange.min, tempConfig.normalRange.max) + (loadTempIncrease * 0.5);
+    }
+    
+    return {
+        sensor_id: sensor.id,
+        factory_id: factoryId,
+        type: 'temperature',
+        zone: sensor.zone,
+        value: parseFloat(value.toFixed(1)),
+        unit: tempConfig.unit,
+        status: status,
+        timestamp: new Date().toISOString()
+    };
+}
+
+/**
+ * Generate level sensor reading
+ * Load affects level fluctuation - more orders = more level changes
+ */
+function generateLevelReading(sensor) {
+    if (sensor.status === 'FAILED') {
+        return null;
+    }
+    
+    const levelConfig = config.sensors.level;
+    let value;
+    let status = 'OK';
+    
+    // Higher chance of warning at higher load (tanks being used more)
+    const warningChance = 0.1 + (currentLoad.loadFactor * 0.15); // 10-25% warning chance
+    
+    if (Math.random() < warningChance) {
+        if (Math.random() < 0.5) {
+            value = randomInRange(levelConfig.warningRange.min, levelConfig.normalRange.min);
+        } else {
+            value = randomInRange(levelConfig.normalRange.max, levelConfig.warningRange.max);
+        }
+        status = 'WARNING';
+        stats.warnings++;
+    } else {
+        value = randomInRange(levelConfig.normalRange.min, levelConfig.normalRange.max);
+    }
+    
+    return {
+        sensor_id: sensor.id,
+        factory_id: factoryId,
+        type: 'level',
+        zone: sensor.zone,
+        value: parseFloat(value.toFixed(1)),
+        unit: levelConfig.unit,
+        status: status,
+        timestamp: new Date().toISOString()
+    };
+}
+
+/**
+ * Generate quality sensor reading (pH, color, or weight)
+ * Load affects quality - more orders = more quality variation
+ */
+function generateQualityReading(sensor) {
+    if (sensor.status === 'FAILED') {
+        return null;
+    }
+    
+    let value;
+    let status = 'OK';
+    
+    // Higher chance of warning at higher load (quality control harder with more production)
+    const warningChance = 0.1 + (currentLoad.loadFactor * 0.15); // 10-25% warning chance
+    
+    if (Math.random() < warningChance) {
+        if (Math.random() < 0.5) {
+            value = randomInRange(sensor.warningRange.min, sensor.normalRange.min);
+        } else {
+            value = randomInRange(sensor.normalRange.max, sensor.warningRange.max);
+        }
+        status = 'WARNING';
+        stats.warnings++;
+    } else {
+        value = randomInRange(sensor.normalRange.min, sensor.normalRange.max);
+    }
+    
+    // Format based on metric type
+    if (sensor.metric === 'ph') {
+        value = parseFloat(value.toFixed(2));
+    } else if (sensor.metric === 'color') {
+        value = Math.round(value);
+    } else if (sensor.metric === 'weight') {
+        value = parseFloat(value.toFixed(1));
+    }
+    
+    return {
+        sensor_id: sensor.id,
+        factory_id: factoryId,
+        type: 'quality',
+        metric: sensor.metric,
+        value: value,
+        unit: sensor.unit,
+        status: status,
+        timestamp: new Date().toISOString()
+    };
+}
+
+/**
+ * Publish sensor reading to MQTT
+ */
+function publishSensorReading(sensorType, reading) {
+    if (!reading) return;
+    
+    const topic = `${config.mqtt.topicPrefix}/${factoryId}/sensors/${sensorType}/${reading.sensor_id}`;
     
     try {
-        mqttClient.publish(topic, JSON.stringify(message), { qos: config.mqtt.qos }, (err) => {
+        mqttClient.publish(topic, JSON.stringify(reading), { qos: config.mqtt.qos }, (err) => {
             if (err) {
-                logger.error(`Failed to publish heartbeat`, { error: err.message });
+                logger.error(`Failed to publish sensor reading`, { error: err.message, sensor: reading.sensor_id });
                 stats.errors++;
             } else {
-                stats.heartbeatsSent++;
-                logger.debug(`Heartbeat sent`, { 
-                    factoryId, 
-                    sequence: message.sequence,
-                    status: message.status
-                });
+                stats.readingsSent++;
+                logger.debug(`Sensor reading sent`, { sensor: reading.sensor_id, value: reading.value, status: reading.status });
             }
         });
     } catch (error) {
-        logger.error(`Error sending heartbeat`, { error: error.message });
+        logger.error(`Error publishing sensor reading`, { error: error.message });
         stats.errors++;
+    }
+}
+
+/**
+ * Send all sensor readings
+ */
+function sendSensorReadings() {
+    updateSensorStates();
+    
+    // Temperature sensors
+    for (const sensor of sensors.temperature) {
+        const reading = generateTemperatureReading(sensor);
+        publishSensorReading('temperature', reading);
+    }
+    
+    // Level sensors
+    for (const sensor of sensors.level) {
+        const reading = generateLevelReading(sensor);
+        publishSensorReading('level', reading);
+    }
+    
+    // Quality sensors
+    for (const sensor of sensors.quality) {
+        const reading = generateQualityReading(sensor);
+        publishSensorReading('quality', reading);
     }
 }
 
@@ -181,10 +337,7 @@ function sendHeartbeat() {
  */
 function connectMqtt() {
     return new Promise((resolve, reject) => {
-        logger.info(`Connecting to MQTT broker`, { 
-            url: mqttBrokerUrl, 
-            factoryId 
-        });
+        logger.info(`Connecting to MQTT broker`, { url: mqttBrokerUrl, factoryId });
         
         mqttClient = mqtt.connect(mqttBrokerUrl, {
             clientId: `${factoryId}-${Date.now()}`,
@@ -211,11 +364,6 @@ function connectMqtt() {
             logger.warn(`MQTT connection closed`, { factoryId });
         });
         
-        mqttClient.on('offline', () => {
-            logger.warn(`MQTT client offline`, { factoryId });
-        });
-        
-        // Timeout for initial connection
         setTimeout(() => {
             if (!mqttClient.connected) {
                 reject(new Error('MQTT connection timeout'));
@@ -225,34 +373,30 @@ function connectMqtt() {
 }
 
 /**
- * Start heartbeat sending
+ * Start sensor reading loop
  */
-function startHeartbeats() {
-    logger.info(`Starting heartbeats`, { 
+function startSensorReadings() {
+    logger.info(`Starting sensor readings`, { 
         factoryId, 
-        intervalMs: heartbeatIntervalMs,
+        intervalMs: sensorReadingIntervalMs,
         simulateFailures,
-        failureProbability
+        failureProbability,
+        totalSensors: sensors.temperature.length + sensors.level.length + sensors.quality.length
     });
     
-    // Send first heartbeat immediately
-    sendHeartbeat();
+    // Send first readings immediately
+    sendSensorReadings();
     
-    // Add jitter to interval
-    const jitteredInterval = heartbeatIntervalMs + randomInRange(-config.heartbeat.jitterMs, config.heartbeat.jitterMs);
-    
-    heartbeatInterval = setInterval(() => {
-        sendHeartbeat();
-    }, jitteredInterval);
+    sensorInterval = setInterval(sendSensorReadings, sensorReadingIntervalMs);
 }
 
 /**
- * Stop heartbeats
+ * Stop sensor readings
  */
-function stopHeartbeats() {
-    if (heartbeatInterval) {
-        clearInterval(heartbeatInterval);
-        heartbeatInterval = null;
+function stopSensorReadings() {
+    if (sensorInterval) {
+        clearInterval(sensorInterval);
+        sensorInterval = null;
     }
 }
 
@@ -260,15 +404,62 @@ function stopHeartbeats() {
  * Print statistics
  */
 function printStats() {
+    const totalSensors = sensors.temperature.length + sensors.level.length + sensors.quality.length;
+    const failedSensors = 
+        sensors.temperature.filter(s => s.status === 'FAILED').length +
+        sensors.level.filter(s => s.status === 'FAILED').length +
+        sensors.quality.filter(s => s.status === 'FAILED').length;
+    
     logger.info(`Factory simulator statistics`, {
         factoryId,
-        heartbeatsSent: stats.heartbeatsSent,
-        failures: stats.failures,
+        readingsSent: stats.readingsSent,
+        sensorFailures: stats.failures,
+        sensorWarnings: stats.warnings,
+        currentlyFailed: failedSensors,
+        totalSensors: totalSensors,
+        healthPercentage: Math.round(((totalSensors - failedSensors) / totalSensors) * 100),
+        currentLoad: currentLoad.orderCount,
+        loadFactor: currentLoad.loadFactor.toFixed(2),
         reconnects: stats.reconnects,
-        errors: stats.errors,
-        isInFailureState,
-        isDegraded
+        errors: stats.errors
     });
+}
+
+/**
+ * Fetch current load from PMS
+ */
+async function fetchCurrentLoad() {
+    try {
+        const response = await axios.get(`${pmsUrl}/orders?factoryId=${factoryId}`);
+        const orders = response.data.data || [];
+        
+        // Count active orders (assigned or in_progress)
+        const activeOrders = orders.filter(o => 
+            o.status === 'assigned' || o.status === 'in_progress'
+        );
+        
+        currentLoad.orderCount = activeOrders.length;
+        currentLoad.loadFactor = Math.min(1, activeOrders.length / currentLoad.maxCapacity);
+        
+        logger.debug(`Load updated`, { 
+            factoryId, 
+            orderCount: currentLoad.orderCount, 
+            loadFactor: currentLoad.loadFactor 
+        });
+    } catch (error) {
+        // Silently fail - load fetch is optional enhancement
+        logger.debug(`Failed to fetch load`, { error: error.message });
+    }
+}
+
+/**
+ * Start load monitoring
+ */
+function startLoadMonitoring() {
+    // Fetch load every 2 seconds
+    setInterval(fetchCurrentLoad, 2000);
+    // Initial fetch
+    fetchCurrentLoad();
 }
 
 /**
@@ -277,7 +468,7 @@ function printStats() {
 function shutdown() {
     logger.info(`Shutting down factory simulator`, { factoryId });
     
-    stopHeartbeats();
+    stopSensorReadings();
     
     if (mqttClient) {
         mqttClient.end(true);
@@ -295,14 +486,19 @@ async function main() {
     logger.info(`Starting Factory Simulator`, {
         factoryId,
         mqttBroker: mqttBrokerUrl,
-        heartbeatInterval: heartbeatIntervalMs,
+        sensorReadingInterval: sensorReadingIntervalMs,
         simulateFailures,
-        failureProbability
+        failureProbability,
+        pmsUrl
     });
+    
+    // Initialize sensors
+    initializeSensors();
     
     try {
         await connectMqtt();
-        startHeartbeats();
+        startSensorReadings();
+        startLoadMonitoring();
         
         // Print stats every 30 seconds
         setInterval(printStats, 30000);

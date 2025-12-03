@@ -1,7 +1,8 @@
 /**
  * MQTT to Kafka Bridge
  * 
- * Subscribes to MQTT topic factory/+/heartbeat and publishes to Kafka topic factory.heartbeat
+ * Subscribes to MQTT sensor topics and publishes to Kafka topic factory.sensors
+ * Topics: factory/+/sensors/temperature/+, factory/+/sensors/level/+, factory/+/sensors/quality/+
  */
 
 const mqtt = require('mqtt');
@@ -30,13 +31,17 @@ const logger = winston.createLogger({
 const config = {
     mqtt: {
         brokerUrl: process.env.MQTT_BROKER_URL || 'mqtt://localhost:1883',
-        topic: process.env.MQTT_TOPIC || 'factory/+/heartbeat',
+        topics: [
+            'factory/+/sensors/temperature/+',
+            'factory/+/sensors/level/+',
+            'factory/+/sensors/quality/+'
+        ],
         clientId: `bridge-${Date.now()}`,
         reconnectPeriod: 5000
     },
     kafka: {
         brokers: (process.env.KAFKA_BROKERS || 'localhost:9092').split(','),
-        topic: process.env.KAFKA_TOPIC || 'factory.heartbeat',
+        topic: process.env.KAFKA_TOPIC || 'factory.sensors',
         clientId: 'mqtt-kafka-bridge'
     }
 };
@@ -61,7 +66,12 @@ const stats = {
     messagesReceived: 0,
     messagesForwarded: 0,
     errors: 0,
-    lastMessageTime: null
+    lastMessageTime: null,
+    byType: {
+        temperature: 0,
+        level: 0,
+        quality: 0
+    }
 };
 
 /**
@@ -94,19 +104,20 @@ function connectMqtt() {
         mqttClient.on('connect', () => {
             logger.info('Connected to MQTT broker');
             
-            // Subscribe to heartbeat topic
-            mqttClient.subscribe(config.mqtt.topic, { qos: 1 }, (err) => {
-                if (err) {
-                    logger.error('Failed to subscribe to MQTT topic', { 
-                        topic: config.mqtt.topic, 
-                        error: err.message 
-                    });
-                    reject(err);
-                } else {
-                    logger.info('Subscribed to MQTT topic', { topic: config.mqtt.topic });
-                    resolve();
-                }
-            });
+            // Subscribe to all sensor topics
+            for (const topic of config.mqtt.topics) {
+                mqttClient.subscribe(topic, { qos: 1 }, (err) => {
+                    if (err) {
+                        logger.error('Failed to subscribe to MQTT topic', { 
+                            topic, 
+                            error: err.message 
+                        });
+                    } else {
+                        logger.info('Subscribed to MQTT topic', { topic });
+                    }
+                });
+            }
+            resolve();
         });
 
         mqttClient.on('error', (error) => {
@@ -128,7 +139,7 @@ function connectMqtt() {
 
 /**
  * Handle incoming MQTT message
- * @param {string} topic - MQTT topic
+ * @param {string} topic - MQTT topic (factory/{factory_id}/sensors/{type}/{sensor_id})
  * @param {Buffer} message - Message payload
  */
 async function handleMqttMessage(topic, message) {
@@ -136,13 +147,19 @@ async function handleMqttMessage(topic, message) {
         stats.messagesReceived++;
         stats.lastMessageTime = new Date();
 
-        // Extract factory ID from topic (factory/{factory_id}/heartbeat)
+        // Parse topic: factory/{factory_id}/sensors/{type}/{sensor_id}
         const topicParts = topic.split('/');
         const factoryId = topicParts[1];
+        const sensorType = topicParts[3]; // temperature, level, or quality
 
-        if (!factoryId) {
-            logger.warn('Could not extract factory ID from topic', { topic });
+        if (!factoryId || !sensorType) {
+            logger.warn('Could not parse topic', { topic });
             return;
+        }
+
+        // Track by type
+        if (stats.byType[sensorType] !== undefined) {
+            stats.byType[sensorType]++;
         }
 
         // Parse message
@@ -150,25 +167,24 @@ async function handleMqttMessage(topic, message) {
         try {
             payload = JSON.parse(message.toString());
         } catch (parseError) {
-            // If not JSON, create wrapper object
             payload = { raw: message.toString() };
         }
 
-        // Ensure factory_id is in payload
+        // Ensure required fields are in payload
         if (!payload.factory_id) {
             payload.factory_id = factoryId;
         }
-
-        // Ensure timestamp is in payload
         if (!payload.timestamp) {
             payload.timestamp = new Date().toISOString();
         }
 
         // Forward to Kafka
-        await forwardToKafka(factoryId, payload);
+        await forwardToKafka(factoryId, sensorType, payload);
 
         logger.debug('Message forwarded', { 
             factoryId, 
+            sensorType,
+            sensorId: payload.sensor_id,
             topic: config.kafka.topic 
         });
 
@@ -184,15 +200,16 @@ async function handleMqttMessage(topic, message) {
 /**
  * Forward message to Kafka
  * @param {string} factoryId - Factory ID (used as key)
+ * @param {string} sensorType - Sensor type (temperature, level, quality)
  * @param {Object} payload - Message payload
  */
-async function forwardToKafka(factoryId, payload) {
+async function forwardToKafka(factoryId, sensorType, payload) {
     try {
         await producer.send({
             topic: config.kafka.topic,
             messages: [
                 {
-                    key: factoryId,
+                    key: `${factoryId}-${sensorType}`,
                     value: JSON.stringify(payload),
                     timestamp: Date.now().toString()
                 }
@@ -202,27 +219,25 @@ async function forwardToKafka(factoryId, payload) {
     } catch (error) {
         logger.error('Failed to send message to Kafka', { 
             error: error.message,
-            factoryId 
+            factoryId,
+            sensorType
         });
         stats.errors++;
         
         // Retry logic
-        await retryKafkaSend(factoryId, payload);
+        await retryKafkaSend(factoryId, sensorType, payload);
     }
 }
 
 /**
  * Retry sending to Kafka with exponential backoff
- * @param {string} factoryId - Factory ID
- * @param {Object} payload - Message payload
- * @param {number} attempt - Current attempt number
  */
-async function retryKafkaSend(factoryId, payload, attempt = 1) {
+async function retryKafkaSend(factoryId, sensorType, payload, attempt = 1) {
     const maxRetries = 3;
     const baseDelay = 100;
 
     if (attempt > maxRetries) {
-        logger.error('All Kafka send retries exhausted', { factoryId });
+        logger.error('All Kafka send retries exhausted', { factoryId, sensorType });
         return;
     }
 
@@ -234,20 +249,21 @@ async function retryKafkaSend(factoryId, payload, attempt = 1) {
             topic: config.kafka.topic,
             messages: [
                 {
-                    key: factoryId,
+                    key: `${factoryId}-${sensorType}`,
                     value: JSON.stringify(payload),
                     timestamp: Date.now().toString()
                 }
             ]
         });
         stats.messagesForwarded++;
-        logger.info('Kafka send succeeded on retry', { factoryId, attempt });
+        logger.info('Kafka send succeeded on retry', { factoryId, sensorType, attempt });
     } catch (error) {
         logger.warn(`Kafka send retry ${attempt} failed`, { 
             factoryId, 
+            sensorType,
             error: error.message 
         });
-        await retryKafkaSend(factoryId, payload, attempt + 1);
+        await retryKafkaSend(factoryId, sensorType, payload, attempt + 1);
     }
 }
 
@@ -259,6 +275,7 @@ function printStats() {
         messagesReceived: stats.messagesReceived,
         messagesForwarded: stats.messagesForwarded,
         errors: stats.errors,
+        byType: stats.byType,
         lastMessageTime: stats.lastMessageTime
     });
 }
@@ -285,7 +302,7 @@ async function shutdown() {
 async function main() {
     logger.info('Starting MQTT-Kafka Bridge', {
         mqttBroker: config.mqtt.brokerUrl,
-        mqttTopic: config.mqtt.topic,
+        mqttTopics: config.mqtt.topics,
         kafkaBrokers: config.kafka.brokers,
         kafkaTopic: config.kafka.topic
     });

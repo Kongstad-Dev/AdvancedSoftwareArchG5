@@ -1,6 +1,6 @@
 """
 MMS Main Application
-Kafka consumer loop, heartbeat processing, fault detection, failover triggering
+Sensor-based monitoring: Kafka consumer, sensor processing, factory health calculation
 """
 import logging
 import json
@@ -11,18 +11,14 @@ from contextlib import asynccontextmanager
 from typing import Optional
 
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
 from kafka import KafkaConsumer
 from kafka.errors import KafkaError
 
 from .config import config
 from .db.mongodb import mongodb_client
-from .monitoring.heartbeat_monitor import heartbeat_monitor
-from .monitoring.fault_detector import fault_detector
-from .monitoring.factory_status import factory_status_manager, FactoryStatus
-from .predictive.risk_predictor import risk_predictor
-from .redundancy.failover_manager import failover_manager
-from .redundancy.recovery_manager import recovery_manager
+from .monitoring.sensor_monitor import sensor_monitor, FactoryHealthStatus
 from .grpc.pms_client import pms_client
 from .health import router as health_router
 
@@ -37,8 +33,8 @@ logger = logging.getLogger(__name__)
 shutdown_event = asyncio.Event()
 
 
-class KafkaHeartbeatConsumer:
-    """Kafka consumer for factory heartbeats"""
+class KafkaSensorConsumer:
+    """Kafka consumer for sensor readings"""
     
     def __init__(self):
         self._consumer: Optional[KafkaConsumer] = None
@@ -48,7 +44,7 @@ class KafkaHeartbeatConsumer:
         """Connect to Kafka"""
         try:
             self._consumer = KafkaConsumer(
-                config.kafka_heartbeat_topic,
+                config.kafka_sensor_topic,
                 bootstrap_servers=config.kafka_brokers_list,
                 group_id=config.kafka_consumer_group,
                 auto_offset_reset='latest',
@@ -69,7 +65,7 @@ class KafkaHeartbeatConsumer:
                 return
         
         self._running = True
-        logger.info("Starting Kafka consumer loop")
+        logger.info("Starting Kafka sensor consumer loop")
         
         while self._running and not shutdown_event.is_set():
             try:
@@ -92,32 +88,11 @@ class KafkaHeartbeatConsumer:
                 await asyncio.sleep(1)
     
     async def _process_message(self, message: dict):
-        """Process a heartbeat message"""
+        """Process a sensor reading message"""
         try:
-            factory_id = message.get("factory_id")
-            timestamp_str = message.get("timestamp")
-            metrics = message.get("metrics", {})
-            
-            if not factory_id:
-                logger.warning("Received heartbeat without factory_id")
-                return
-            
-            # Parse timestamp
-            if timestamp_str:
-                try:
-                    timestamp = datetime.fromisoformat(timestamp_str.replace('Z', '+00:00'))
-                except ValueError:
-                    timestamp = datetime.utcnow()
-            else:
-                timestamp = datetime.utcnow()
-            
-            # Process heartbeat
-            heartbeat_monitor.process_heartbeat(factory_id, timestamp, metrics)
-            
-            logger.debug(f"Processed heartbeat from {factory_id}")
-            
+            sensor_monitor.process_sensor_reading(message)
         except Exception as e:
-            logger.error(f"Error processing heartbeat message: {e}")
+            logger.error(f"Error processing sensor message: {e}")
     
     def stop(self):
         """Stop the consumer"""
@@ -128,51 +103,21 @@ class KafkaHeartbeatConsumer:
 
 
 # Create global consumer instance
-kafka_consumer = KafkaHeartbeatConsumer()
+kafka_consumer = KafkaSensorConsumer()
 
 
 async def monitoring_loop():
     """
     Periodic monitoring loop.
-    - Check heartbeat timeouts
-    - Run fault detection
-    - Check for recoveries
-    - Run risk prediction
+    - Check sensor timeouts
+    - Monitor factory health changes
     """
     logger.info("Starting monitoring loop")
     
     while not shutdown_event.is_set():
         try:
-            # Check heartbeat timeouts
-            heartbeat_monitor.check_timeouts()
-            
-            # Get all tracked factories
-            all_statuses = factory_status_manager.get_all_statuses()
-            
-            for factory_id, status in all_statuses.items():
-                # Run fault detection
-                faults = fault_detector.detect_faults(factory_id)
-                
-                if faults:
-                    logger.info(f"Detected {len(faults)} fault(s) for {factory_id}")
-                    
-                    # Check if we need to trigger failover
-                    high_severity_faults = [f for f in faults if f.severity == "HIGH"]
-                    if high_severity_faults and status != FactoryStatus.DOWN:
-                        await failover_manager.trigger_failover(
-                            factory_id,
-                            f"High severity fault: {high_severity_faults[0].fault_type.value}"
-                        )
-                
-                # Run risk prediction periodically
-                risk_predictor.predict_factory_risk(factory_id)
-                
-                # Check for preemptive rebalancing
-                if risk_predictor.should_preemptively_rebalance(factory_id):
-                    await failover_manager.preemptive_rebalance(factory_id)
-            
-            # Check for recoveries
-            await recovery_manager.check_all_recoveries()
+            # Check for sensor timeouts
+            sensor_monitor.check_sensor_timeouts()
             
         except Exception as e:
             logger.error(f"Error in monitoring loop: {e}")
@@ -183,25 +128,50 @@ async def monitoring_loop():
 def setup_callbacks():
     """Setup callbacks for status changes"""
     
-    def on_timeout(factory_id: str, reason: str, count: int):
-        logger.warning(f"Factory timeout: {factory_id} - {reason} ({count})")
+    def on_sensor_failed(sensor_id: str, factory_id: str, reason: str):
+        logger.warning(f"Sensor failed: {sensor_id} in {factory_id} - {reason}")
     
-    def on_recovery(factory_id: str):
-        logger.info(f"Factory recovery detected: {factory_id}")
+    async def on_factory_status_change(
+        factory_id: str, 
+        old_status: Optional[FactoryHealthStatus], 
+        new_status: FactoryHealthStatus,
+        health_percentage: float
+    ):
+        logger.info(
+            f"Factory {factory_id} status changed: "
+            f"{old_status.value if old_status else 'NEW'} -> {new_status.value} "
+            f"({health_percentage:.0f}% health)"
+        )
+        
+        # Notify PMS if factory becomes CRITICAL or DOWN
+        if new_status in [FactoryHealthStatus.CRITICAL, FactoryHealthStatus.DOWN]:
+            try:
+                # Map to gRPC status
+                grpc_status = "DOWN" if new_status == FactoryHealthStatus.DOWN else "DEGRADED"
+                pms_client.update_factory_status(factory_id, grpc_status)
+                logger.info(f"Notified PMS of factory {factory_id} status: {grpc_status}")
+            except Exception as e:
+                logger.error(f"Failed to notify PMS: {e}")
+        elif new_status == FactoryHealthStatus.OPERATIONAL:
+            try:
+                pms_client.update_factory_status(factory_id, "UP")
+                logger.info(f"Notified PMS of factory {factory_id} recovery")
+            except Exception as e:
+                logger.error(f"Failed to notify PMS of recovery: {e}")
     
-    def on_status_change(factory_id: str, old_status: FactoryStatus, new_status: FactoryStatus, reason: str):
-        logger.info(f"Factory status changed: {factory_id} {old_status.value} -> {new_status.value} ({reason})")
-    
-    heartbeat_monitor.on_timeout(on_timeout)
-    heartbeat_monitor.on_recovery(on_recovery)
-    factory_status_manager.on_any_transition(on_status_change)
+    sensor_monitor.on_sensor_failed(on_sensor_failed)
+    sensor_monitor.on_factory_status_change(
+        lambda fid, old, new, pct: asyncio.create_task(
+            on_factory_status_change(fid, old, new, pct)
+        )
+    )
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Application lifespan handler"""
     # Startup
-    logger.info("Starting MMS...")
+    logger.info("Starting MMS (Sensor Monitoring)...")
     
     # Connect to MongoDB
     if not mongodb_client.connect():
@@ -227,7 +197,6 @@ async def lifespan(app: FastAPI):
     shutdown_event.set()
     
     kafka_consumer.stop()
-    heartbeat_monitor.stop_monitoring()
     mongodb_client.close()
     pms_client.close()
     
@@ -251,9 +220,18 @@ async def lifespan(app: FastAPI):
 # Create FastAPI app
 app = FastAPI(
     title="Monitoring & Maintenance System (MMS)",
-    description="Factory monitoring, fault detection, and failover management",
-    version="1.0.0",
+    description="Sensor-based factory monitoring and health management",
+    version="2.0.0",
     lifespan=lifespan
+)
+
+# Add CORS middleware for dashboard access
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 # Include health router
@@ -265,46 +243,108 @@ async def root():
     """Root endpoint"""
     return {
         "service": "Monitoring & Maintenance System (MMS)",
-        "version": "1.0.0",
+        "version": "2.0.0",
+        "description": "Sensor-based factory health monitoring",
         "endpoints": {
             "health": "/health",
-            "factories": "/factories"
+            "factories": "/api/factories",
+            "sensors": "/api/sensors/{factory_id}"
         }
     }
 
 
-@app.get("/factories")
-async def get_factories():
-    """Get all factory statuses"""
-    statuses = factory_status_manager.get_all_statuses()
+@app.get("/api/factories")
+async def get_all_factories():
+    """Get health status of all factories"""
+    all_health = sensor_monitor.get_all_factory_health()
+    
     return {
         "factories": [
             {
                 "factory_id": fid,
-                "status": status.value
+                "status": health.status.value,
+                "health_percentage": round(health.health_percentage, 1),
+                "sensors": {
+                    "total": health.total_sensors,
+                    "ok": health.ok_sensors,
+                    "warning": health.warning_sensors,
+                    "failed": health.failed_sensors
+                },
+                "last_updated": health.last_updated.isoformat()
             }
-            for fid, status in statuses.items()
+            for fid, health in all_health.items()
         ]
     }
 
 
-@app.get("/factories/{factory_id}")
+@app.get("/api/factories/{factory_id}")
 async def get_factory(factory_id: str):
-    """Get factory status details"""
-    status_sm = factory_status_manager.get(factory_id)
-    if not status_sm:
-        return {"error": "Factory not found"}
+    """Get detailed factory health"""
+    health = sensor_monitor.get_factory_health(factory_id)
     
-    risk = risk_predictor.predict_factory_risk(factory_id)
-    mongo_status = mongodb_client.get_factory_status(factory_id)
+    if not health:
+        return {"error": "Factory not found", "factory_id": factory_id}
+    
+    sensors = sensor_monitor.get_factory_sensors(factory_id)
+    
+    # Group sensors by type
+    sensors_by_type = {"temperature": [], "level": [], "quality": []}
+    for sensor_id, status in sensors.items():
+        # Extract type from sensor_id (e.g., factory-1-temp-1 -> temp)
+        if "-temp-" in sensor_id:
+            sensors_by_type["temperature"].append({"id": sensor_id, "status": status.value})
+        elif "-level-" in sensor_id:
+            sensors_by_type["level"].append({"id": sensor_id, "status": status.value})
+        else:
+            sensors_by_type["quality"].append({"id": sensor_id, "status": status.value})
     
     return {
         "factory_id": factory_id,
-        "status": status_sm.current_status.value,
-        "risk_level": risk.risk_level.value,
-        "risk_factors": risk.factors,
-        "missed_heartbeats": mongo_status.get("missed_heartbeats", 0) if mongo_status else 0,
-        "last_updated": mongo_status.get("last_updated").isoformat() if mongo_status and mongo_status.get("last_updated") else None
+        "status": health.status.value,
+        "health_percentage": round(health.health_percentage, 1),
+        "sensors_summary": {
+            "total": health.total_sensors,
+            "ok": health.ok_sensors,
+            "warning": health.warning_sensors,
+            "failed": health.failed_sensors
+        },
+        "sensors_by_type": sensors_by_type,
+        "last_updated": health.last_updated.isoformat()
+    }
+
+
+@app.get("/api/sensors/{factory_id}")
+async def get_factory_sensors(factory_id: str):
+    """Get all sensors for a factory"""
+    sensors = sensor_monitor.get_factory_sensors(factory_id)
+    
+    if not sensors:
+        return {"error": "No sensors found for factory", "factory_id": factory_id}
+    
+    return {
+        "factory_id": factory_id,
+        "sensor_count": len(sensors),
+        "sensors": [
+            {"sensor_id": sid, "status": status.value}
+            for sid, status in sensors.items()
+        ]
+    }
+
+
+@app.get("/api/status")
+async def get_status():
+    """Get overall system status (legacy compatibility)"""
+    all_health = sensor_monitor.get_all_factory_health()
+    
+    return {
+        "factories": [
+            {
+                "factory_id": fid,
+                "status": health.status.value,
+                "health_percentage": round(health.health_percentage, 1)
+            }
+            for fid, health in all_health.items()
+        ]
     }
 
 

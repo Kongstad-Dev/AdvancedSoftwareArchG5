@@ -1,0 +1,802 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Industry 4.0 Dashboard</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+            background: #0f172a;
+            color: #e2e8f0;
+            min-height: 100vh;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #1e293b 0%, #334155 100%);
+            padding: 1.5rem 2rem;
+            border-bottom: 1px solid #334155;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .header h1 {
+            font-size: 1.5rem;
+            font-weight: 600;
+            color: #f8fafc;
+        }
+
+        .header h1 span {
+            color: #3b82f6;
+        }
+
+        .status-indicator {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            font-size: 0.875rem;
+        }
+
+        .status-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            animation: pulse 2s infinite;
+        }
+
+        .status-dot.connected { background: #22c55e; }
+        .status-dot.disconnected { background: #ef4444; }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+        .main-content {
+            padding: 2rem;
+            max-width: 1800px;
+            margin: 0 auto;
+        }
+
+        .section-title {
+            font-size: 1.25rem;
+            font-weight: 600;
+            margin-bottom: 1rem;
+            color: #94a3b8;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .section-title::before {
+            content: '';
+            width: 4px;
+            height: 20px;
+            background: #3b82f6;
+            border-radius: 2px;
+        }
+
+        /* Factory Cards Grid */
+        .factories-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(380px, 1fr));
+            gap: 1.5rem;
+            margin-bottom: 2rem;
+        }
+
+        .factory-card {
+            background: #1e293b;
+            border-radius: 12px;
+            padding: 1.5rem;
+            border: 1px solid #334155;
+            transition: all 0.3s ease;
+        }
+
+        .factory-card:hover {
+            border-color: #3b82f6;
+            transform: translateY(-2px);
+        }
+
+        .factory-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1rem;
+        }
+
+        .factory-name {
+            font-size: 1.125rem;
+            font-weight: 600;
+            color: #f8fafc;
+        }
+
+        .factory-status {
+            padding: 0.25rem 0.75rem;
+            border-radius: 9999px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+
+        .status-operational { background: #166534; color: #bbf7d0; }
+        .status-degraded { background: #854d0e; color: #fef08a; }
+        .status-critical { background: #9a3412; color: #fed7aa; }
+        .status-down { background: #991b1b; color: #fecaca; }
+        .status-unknown { background: #374151; color: #9ca3af; }
+
+        .health-bar-container {
+            margin-bottom: 1rem;
+        }
+
+        .health-bar-label {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 0.5rem;
+            font-size: 0.875rem;
+            color: #94a3b8;
+        }
+
+        .health-bar {
+            height: 8px;
+            background: #334155;
+            border-radius: 4px;
+            overflow: hidden;
+        }
+
+        .health-bar-fill {
+            height: 100%;
+            border-radius: 4px;
+            transition: width 0.5s ease, background 0.3s ease;
+        }
+
+        .health-operational { background: linear-gradient(90deg, #22c55e, #16a34a); }
+        .health-degraded { background: linear-gradient(90deg, #eab308, #ca8a04); }
+        .health-critical { background: linear-gradient(90deg, #f97316, #ea580c); }
+        .health-down { background: linear-gradient(90deg, #ef4444, #dc2626); }
+
+        .sensors-summary {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 0.75rem;
+            margin-bottom: 1rem;
+        }
+
+        .sensor-stat {
+            background: #0f172a;
+            padding: 0.75rem;
+            border-radius: 8px;
+            text-align: center;
+        }
+
+        .sensor-stat-value {
+            font-size: 1.5rem;
+            font-weight: 700;
+        }
+
+        .sensor-stat-label {
+            font-size: 0.75rem;
+            color: #64748b;
+            text-transform: uppercase;
+        }
+
+        .sensor-ok .sensor-stat-value { color: #22c55e; }
+        .sensor-warning .sensor-stat-value { color: #eab308; }
+        .sensor-failed .sensor-stat-value { color: #ef4444; }
+
+        /* Sensors Detail Section */
+        .sensors-detail {
+            margin-top: 1rem;
+            padding-top: 1rem;
+            border-top: 1px solid #334155;
+        }
+
+        .sensors-by-type {
+            display: flex;
+            flex-direction: column;
+            gap: 0.75rem;
+        }
+
+        .sensor-type-row {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .sensor-type-label {
+            font-size: 0.75rem;
+            color: #64748b;
+            width: 80px;
+            text-transform: uppercase;
+        }
+
+        .sensor-dots {
+            display: flex;
+            gap: 4px;
+            flex-wrap: wrap;
+        }
+
+        .sensor-dot {
+            width: 12px;
+            height: 12px;
+            border-radius: 3px;
+            transition: all 0.3s ease;
+        }
+
+        .sensor-dot.ok { background: #22c55e; }
+        .sensor-dot.warning { background: #eab308; }
+        .sensor-dot.failed { background: #ef4444; animation: blink 1s infinite; }
+
+        @keyframes blink {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.3; }
+        }
+
+        /* Factory Orders Section */
+        .factory-orders {
+            margin-top: 1rem;
+            padding-top: 1rem;
+            border-top: 1px solid #334155;
+        }
+
+        .factory-orders-title {
+            font-size: 0.85rem;
+            color: #94a3b8;
+            margin-bottom: 0.5rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .factory-orders-list {
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+        }
+
+        .factory-order-item {
+            background: #0f172a;
+            padding: 0.75rem;
+            border-radius: 6px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-left: 3px solid #3b82f6;
+        }
+
+        .factory-order-item.in-progress {
+            border-left-color: #22c55e;
+            animation: working 2s infinite;
+        }
+
+        @keyframes working {
+            0%, 100% { background: #0f172a; }
+            50% { background: #1a2e1a; }
+        }
+
+        .factory-order-info {
+            display: flex;
+            flex-direction: column;
+            gap: 0.25rem;
+        }
+
+        .factory-order-id {
+            font-weight: 600;
+            font-size: 0.85rem;
+            color: #f8fafc;
+        }
+
+        .factory-order-product {
+            font-size: 0.75rem;
+            color: #64748b;
+        }
+
+        .factory-order-status {
+            padding: 0.125rem 0.5rem;
+            border-radius: 4px;
+            font-size: 0.65rem;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+
+        .order-assigned { background: #1e3a8a; color: #93c5fd; }
+        .order-in_progress { background: #166534; color: #bbf7d0; }
+
+        .no-orders {
+            color: #64748b;
+            font-size: 0.8rem;
+            font-style: italic;
+            padding: 0.5rem;
+        }
+
+        /* Completed Orders Section */
+        .completed-section {
+            margin-top: 2rem;
+        }
+
+        .completed-orders-box {
+            background: #1e293b;
+            border-radius: 12px;
+            padding: 1.5rem;
+            border: 1px solid #334155;
+            max-height: 300px;
+            overflow-y: auto;
+        }
+
+        .completed-orders-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+            gap: 0.75rem;
+        }
+
+        .completed-order-card {
+            background: #0f172a;
+            border-radius: 6px;
+            padding: 0.75rem;
+            border-left: 3px solid #22c55e;
+        }
+
+        .completed-order-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 0.25rem;
+        }
+
+        .completed-order-id {
+            font-weight: 600;
+            font-size: 0.8rem;
+            color: #f8fafc;
+        }
+
+        .completed-badge {
+            background: #166534;
+            color: #bbf7d0;
+            padding: 0.125rem 0.375rem;
+            border-radius: 4px;
+            font-size: 0.6rem;
+            font-weight: 600;
+        }
+
+        .completed-order-details {
+            font-size: 0.7rem;
+            color: #64748b;
+        }
+
+        /* System Stats */
+        .system-stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            gap: 1rem;
+            margin-bottom: 2rem;
+        }
+
+        .stat-card {
+            background: #1e293b;
+            border-radius: 8px;
+            padding: 1.25rem;
+            border: 1px solid #334155;
+        }
+
+        .stat-value {
+            font-size: 2rem;
+            font-weight: 700;
+            color: #f8fafc;
+        }
+
+        .stat-label {
+            font-size: 0.875rem;
+            color: #64748b;
+            margin-top: 0.25rem;
+        }
+
+        .stat-value.green { color: #22c55e; }
+        .stat-value.blue { color: #3b82f6; }
+        .stat-value.yellow { color: #eab308; }
+
+        /* Loading State */
+        .loading {
+            text-align: center;
+            padding: 2rem;
+            color: #64748b;
+        }
+
+        .loading-spinner {
+            width: 40px;
+            height: 40px;
+            border: 3px solid #334155;
+            border-top-color: #3b82f6;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 1rem;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        /* Last Updated */
+        .last-updated {
+            text-align: right;
+            font-size: 0.75rem;
+            color: #64748b;
+            margin-top: 1rem;
+        }
+
+        /* Responsive */
+        @media (max-width: 768px) {
+            .factories-grid {
+                grid-template-columns: 1fr;
+            }
+            
+            .main-content {
+                padding: 1rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <header class="header">
+        <h1><span>Industry 4.0</span> Production Dashboard</h1>
+        <div class="status-indicator">
+            <div class="status-dot" id="connectionStatus"></div>
+            <span id="connectionText">Connecting...</span>
+        </div>
+    </header>
+
+    <main class="main-content">
+        <!-- System Overview Stats -->
+        <div class="system-stats" id="systemStats">
+            <div class="stat-card">
+                <div class="stat-value" id="totalFactories">-</div>
+                <div class="stat-label">Total Factories</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value green" id="operationalFactories">-</div>
+                <div class="stat-label">Operational</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" id="totalSensors">-</div>
+                <div class="stat-label">Total Sensors</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value blue" id="activeOrders">-</div>
+                <div class="stat-label">Active Orders</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value yellow" id="inProgressOrders">-</div>
+                <div class="stat-label">In Progress</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value green" id="completedCount">-</div>
+                <div class="stat-label">Completed</div>
+            </div>
+        </div>
+
+        <!-- Factories Section -->
+        <h2 class="section-title">Factory Health & Active Orders</h2>
+        <div class="factories-grid" id="factoriesGrid">
+            <div class="loading">
+                <div class="loading-spinner"></div>
+                <p>Loading factory data...</p>
+            </div>
+        </div>
+
+        <!-- Completed Orders Section -->
+        <div class="completed-section">
+            <h2 class="section-title">✅ Completed Orders</h2>
+            <div class="completed-orders-box">
+                <div class="completed-orders-grid" id="completedOrdersGrid">
+                    <p style="color: #64748b; grid-column: 1/-1;">No completed orders yet</p>
+                </div>
+            </div>
+        </div>
+
+        <div class="last-updated">
+            Last updated: <span id="lastUpdated">-</span>
+        </div>
+    </main>
+
+    <script>
+        // Configuration
+        let config = {
+            mmsUrl: 'http://localhost:8000',
+            pmsUrl: 'http://localhost:3000'
+        };
+
+        // State
+        let isConnected = false;
+        let errorCount = 0;
+        let allOrders = [];
+
+        // Initialize
+        async function init() {
+            console.log('Initializing dashboard...');
+            
+            // Start polling
+            fetchData();
+            setInterval(fetchData, 2000); // Update every 2 seconds
+        }
+
+        // Fetch all data
+        async function fetchData() {
+            try {
+                const [factoriesOk, ordersOk] = await Promise.all([
+                    fetchFactories(),
+                    fetchOrders()
+                ]);
+                
+                if (factoriesOk || ordersOk) {
+                    updateConnectionStatus(true);
+                    errorCount = 0;
+                }
+            } catch (error) {
+                console.error('Error fetching data:', error);
+                errorCount++;
+                updateConnectionStatus(false, error.message);
+            }
+        }
+
+        // Fetch factory data from MMS
+        async function fetchFactories() {
+            try {
+                const response = await fetch(`${config.mmsUrl}/api/factories`, {
+                    method: 'GET',
+                    headers: { 'Accept': 'application/json' },
+                    mode: 'cors'
+                });
+                
+                if (!response.ok) {
+                    throw new Error(`MMS returned ${response.status}`);
+                }
+                
+                const data = await response.json();
+                const factories = data.factories || [];
+                
+                renderFactories(factories);
+                updateSystemStats(factories);
+                return true;
+            } catch (error) {
+                console.error('Error fetching factories:', error);
+                return false;
+            }
+        }
+
+        // Fetch orders from PMS
+        async function fetchOrders() {
+            try {
+                const response = await fetch(`${config.pmsUrl}/orders`, {
+                    method: 'GET',
+                    headers: { 'Accept': 'application/json' },
+                    mode: 'cors'
+                });
+                
+                if (!response.ok) {
+                    throw new Error(`PMS returned ${response.status}`);
+                }
+                
+                const data = await response.json();
+                allOrders = data.data || data.orders || [];
+                
+                // Update stats
+                const activeOrders = allOrders.filter(o => o.status === 'assigned' || o.status === 'in_progress');
+                const inProgressOrders = allOrders.filter(o => o.status === 'in_progress');
+                const completedOrders = allOrders.filter(o => o.status === 'completed');
+                
+                document.getElementById('activeOrders').textContent = activeOrders.length;
+                document.getElementById('inProgressOrders').textContent = inProgressOrders.length;
+                document.getElementById('completedCount').textContent = completedOrders.length;
+                
+                // Render completed orders
+                renderCompletedOrders(completedOrders);
+                
+                return true;
+            } catch (e) {
+                console.error('Error fetching orders:', e);
+                return false;
+            }
+        }
+
+        // Render factories with their orders
+        function renderFactories(factories) {
+            const grid = document.getElementById('factoriesGrid');
+            
+            if (!factories || factories.length === 0) {
+                grid.innerHTML = '<div class="loading">No factories connected. Waiting for data...</div>';
+                return;
+            }
+
+            grid.innerHTML = factories.map(factory => {
+                const statusClass = getStatusClass(factory.status);
+                const healthClass = getHealthClass(factory.status);
+                const health = factory.health_percentage || 0;
+                const sensors = factory.sensors || { ok: 0, warning: 0, failed: 0, total: 20 };
+                
+                // Get orders for this factory
+                const factoryOrders = allOrders.filter(o => 
+                    o.assigned_factory_id === factory.factory_id && 
+                    (o.status === 'assigned' || o.status === 'in_progress')
+                );
+                
+                return `
+                    <div class="factory-card">
+                        <div class="factory-header">
+                            <span class="factory-name">${factory.factory_id || 'Unknown'}</span>
+                            <span class="factory-status ${statusClass}">${factory.status || 'UNKNOWN'}</span>
+                        </div>
+                        
+                        <div class="health-bar-container">
+                            <div class="health-bar-label">
+                                <span>Health</span>
+                                <span>${health.toFixed(1)}%</span>
+                            </div>
+                            <div class="health-bar">
+                                <div class="health-bar-fill ${healthClass}" 
+                                     style="width: ${health}%"></div>
+                            </div>
+                        </div>
+                        
+                        <div class="sensors-summary">
+                            <div class="sensor-stat sensor-ok">
+                                <div class="sensor-stat-value">${sensors.ok}</div>
+                                <div class="sensor-stat-label">OK</div>
+                            </div>
+                            <div class="sensor-stat sensor-warning">
+                                <div class="sensor-stat-value">${sensors.warning}</div>
+                                <div class="sensor-stat-label">Warning</div>
+                            </div>
+                            <div class="sensor-stat sensor-failed">
+                                <div class="sensor-stat-value">${sensors.failed}</div>
+                                <div class="sensor-stat-label">Failed</div>
+                            </div>
+                        </div>
+                        
+                        <div class="sensors-detail">
+                            <div class="sensors-by-type">
+                                ${renderSensorDots('Temp', 6, sensors)}
+                                ${renderSensorDots('Level', 6, sensors)}
+                                ${renderSensorDots('Quality', 8, sensors)}
+                            </div>
+                        </div>
+                        
+                        <div class="factory-orders">
+                            <div class="factory-orders-title">
+                                📦 Active Orders (${factoryOrders.length}/2)
+                            </div>
+                            <div class="factory-orders-list">
+                                ${factoryOrders.length > 0 ? factoryOrders.map(order => `
+                                    <div class="factory-order-item ${order.status === 'in_progress' ? 'in-progress' : ''}">
+                                        <div class="factory-order-info">
+                                            <span class="factory-order-id">Order #${order.id}</span>
+                                            <span class="factory-order-product">${order.product_type} × ${order.quantity}</span>
+                                        </div>
+                                        <span class="factory-order-status order-${order.status}">${order.status.replace('_', ' ')}</span>
+                                    </div>
+                                `).join('') : '<p class="no-orders">No active orders</p>'}
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        // Render sensor dots visualization
+        function renderSensorDots(type, count, sensors) {
+            const okCount = sensors.ok || 0;
+            const warningCount = sensors.warning || 0;
+            const total = sensors.total || 20;
+            
+            let dots = '';
+            for (let i = 0; i < count; i++) {
+                const ratio = i / count;
+                const okThreshold = okCount / total;
+                const warningThreshold = (okCount + warningCount) / total;
+                
+                let status = 'ok';
+                if (ratio >= okThreshold && ratio < warningThreshold) status = 'warning';
+                else if (ratio >= warningThreshold) status = 'failed';
+                
+                dots += `<div class="sensor-dot ${status}" title="${type} Sensor ${i + 1}"></div>`;
+            }
+            
+            return `
+                <div class="sensor-type-row">
+                    <span class="sensor-type-label">${type}</span>
+                    <div class="sensor-dots">${dots}</div>
+                </div>
+            `;
+        }
+
+        // Render completed orders
+        function renderCompletedOrders(orders) {
+            const grid = document.getElementById('completedOrdersGrid');
+            
+            if (!orders || orders.length === 0) {
+                grid.innerHTML = '<p style="color: #64748b; grid-column: 1/-1;">No completed orders yet</p>';
+                return;
+            }
+
+            // Show last 20 completed orders, newest first
+            const recentCompleted = orders.slice(-20).reverse();
+            
+            grid.innerHTML = recentCompleted.map(order => `
+                <div class="completed-order-card">
+                    <div class="completed-order-header">
+                        <span class="completed-order-id">Order #${order.id}</span>
+                        <span class="completed-badge">✓ DONE</span>
+                    </div>
+                    <div class="completed-order-details">
+                        ${order.product_type} × ${order.quantity}<br>
+                        ${order.assigned_factory_id || 'N/A'}
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        // Update system stats
+        function updateSystemStats(factories) {
+            if (!factories || factories.length === 0) {
+                document.getElementById('totalFactories').textContent = '0';
+                document.getElementById('operationalFactories').textContent = '0';
+                document.getElementById('totalSensors').textContent = '0';
+                return;
+            }
+            
+            document.getElementById('totalFactories').textContent = factories.length;
+            document.getElementById('operationalFactories').textContent = 
+                factories.filter(f => f.status === 'OPERATIONAL').length;
+            
+            const totalSensors = factories.reduce((sum, f) => sum + (f.sensors?.total || 0), 0);
+            document.getElementById('totalSensors').textContent = totalSensors;
+            
+            document.getElementById('lastUpdated').textContent = new Date().toLocaleTimeString();
+        }
+
+        // Update connection status
+        function updateConnectionStatus(connected, errorMsg = null) {
+            const dot = document.getElementById('connectionStatus');
+            const text = document.getElementById('connectionText');
+            
+            if (connected) {
+                dot.className = 'status-dot connected';
+                text.textContent = 'Connected';
+            } else {
+                dot.className = 'status-dot disconnected';
+                text.textContent = errorMsg ? `Error: ${errorMsg}` : 'Disconnected';
+            }
+            isConnected = connected;
+        }
+
+        // Helper: Get status class
+        function getStatusClass(status) {
+            const map = {
+                'OPERATIONAL': 'status-operational',
+                'DEGRADED': 'status-degraded',
+                'CRITICAL': 'status-critical',
+                'DOWN': 'status-down'
+            };
+            return map[status] || 'status-unknown';
+        }
+
+        // Helper: Get health bar class
+        function getHealthClass(status) {
+            const map = {
+                'OPERATIONAL': 'health-operational',
+                'DEGRADED': 'health-degraded',
+                'CRITICAL': 'health-critical',
+                'DOWN': 'health-down'
+            };
+            return map[status] || 'health-down';
+        }
+
+        // Start
+        init();
+    </script>
+</body>
+</html>

@@ -51,21 +51,29 @@ class OrderRepository {
      * @returns {Promise<Array>} Orders
      */
     async findAll(filters = {}) {
-        let query = 'SELECT * FROM orders WHERE 1=1';
+        let query = `
+            SELECT o.*, 
+                   fa.factory_id as assigned_factory_id,
+                   fa.assigned_at,
+                   fa.status as assignment_status
+            FROM orders o
+            LEFT JOIN factory_assignments fa ON o.id = fa.order_id AND fa.status = 'assigned'
+            WHERE 1=1
+        `;
         const params = [];
         let paramIndex = 1;
 
         if (filters.status) {
-            query += ` AND status = $${paramIndex++}`;
+            query += ` AND o.status = $${paramIndex++}`;
             params.push(filters.status);
         }
 
         if (filters.factoryId) {
-            query += ` AND id IN (SELECT order_id FROM factory_assignments WHERE factory_id = $${paramIndex++} AND status = 'assigned')`;
+            query += ` AND fa.factory_id = $${paramIndex++}`;
             params.push(filters.factoryId);
         }
 
-        query += ' ORDER BY priority DESC, deadline ASC';
+        query += ' ORDER BY o.priority DESC, o.deadline ASC';
 
         if (filters.limit) {
             query += ` LIMIT $${paramIndex++}`;

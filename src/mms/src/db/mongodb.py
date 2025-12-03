@@ -1,5 +1,6 @@
 """
 MongoDB database connection and operations
+Sensor-based monitoring storage
 """
 import logging
 from datetime import datetime, timedelta
@@ -13,7 +14,7 @@ logger = logging.getLogger(__name__)
 
 
 class MongoDBClient:
-    """MongoDB client for MMS"""
+    """MongoDB client for MMS - Sensor monitoring"""
     
     def __init__(self):
         self._client: Optional[MongoClient] = None
@@ -38,12 +39,18 @@ class MongoDBClient:
     
     def _ensure_indexes(self):
         """Create indexes for better query performance"""
-        # Heartbeats collection indexes
-        self._db.heartbeats.create_index([("factory_id", 1), ("timestamp", DESCENDING)])
-        self._db.heartbeats.create_index([("timestamp", DESCENDING)])
+        # Sensor readings collection indexes
+        self._db.sensor_readings.create_index([("sensor_id", 1), ("timestamp", DESCENDING)])
+        self._db.sensor_readings.create_index([("factory_id", 1), ("timestamp", DESCENDING)])
+        self._db.sensor_readings.create_index([("factory_id", 1), ("type", 1)])
+        self._db.sensor_readings.create_index([("timestamp", DESCENDING)])
         
-        # Factory status collection indexes
-        self._db.factory_status.create_index([("factory_id", 1)], unique=True)
+        # Factory health collection indexes
+        self._db.factory_health.create_index([("factory_id", 1)], unique=True)
+        
+        # Sensor status collection indexes
+        self._db.sensor_status.create_index([("sensor_id", 1)], unique=True)
+        self._db.sensor_status.create_index([("factory_id", 1)])
         
         # Failover events collection indexes
         self._db.failover_events.create_index([("factory_id", 1), ("timestamp", DESCENDING)])
@@ -65,60 +72,116 @@ class MongoDBClient:
             self._client.close()
             logger.info("MongoDB connection closed")
     
-    # Heartbeat operations
-    def record_heartbeat(self, factory_id: str, timestamp: datetime, metrics: Dict[str, Any]) -> bool:
-        """Record a heartbeat from a factory"""
+    # Sensor reading operations
+    def record_sensor_reading(
+        self, 
+        sensor_id: str, 
+        factory_id: str, 
+        sensor_type: str,
+        value: float,
+        status: str,
+        timestamp: datetime,
+        extra_data: Dict[str, Any] = None
+    ) -> bool:
+        """Record a sensor reading"""
         try:
-            self._db.heartbeats.insert_one({
+            doc = {
+                "sensor_id": sensor_id,
                 "factory_id": factory_id,
+                "type": sensor_type,
+                "value": value,
+                "status": status,
                 "timestamp": timestamp,
-                "metrics": metrics,
                 "recorded_at": datetime.utcnow()
-            })
+            }
+            if extra_data:
+                doc.update(extra_data)
+            
+            self._db.sensor_readings.insert_one(doc)
+            
+            # Also update sensor status
+            self._update_sensor_status(sensor_id, factory_id, sensor_type, status, timestamp)
+            
             return True
         except Exception as e:
-            logger.error(f"Failed to record heartbeat: {e}")
+            logger.error(f"Failed to record sensor reading: {e}")
             return False
     
-    def get_latest_heartbeat(self, factory_id: str) -> Optional[Dict]:
-        """Get the most recent heartbeat for a factory"""
-        return self._db.heartbeats.find_one(
-            {"factory_id": factory_id},
+    def _update_sensor_status(
+        self,
+        sensor_id: str,
+        factory_id: str,
+        sensor_type: str,
+        status: str,
+        timestamp: datetime
+    ):
+        """Update current sensor status"""
+        self._db.sensor_status.update_one(
+            {"sensor_id": sensor_id},
+            {
+                "$set": {
+                    "factory_id": factory_id,
+                    "type": sensor_type,
+                    "status": status,
+                    "last_reading": timestamp,
+                    "last_updated": datetime.utcnow()
+                }
+            },
+            upsert=True
+        )
+    
+    def get_latest_sensor_reading(self, sensor_id: str) -> Optional[Dict]:
+        """Get the most recent reading for a sensor"""
+        return self._db.sensor_readings.find_one(
+            {"sensor_id": sensor_id},
             sort=[("timestamp", DESCENDING)]
         )
     
-    def get_heartbeats_in_window(self, factory_id: str, window_seconds: int) -> List[Dict]:
-        """Get heartbeats within a time window"""
+    def get_sensor_readings_in_window(self, sensor_id: str, window_seconds: int) -> List[Dict]:
+        """Get sensor readings within a time window"""
         since = datetime.utcnow() - timedelta(seconds=window_seconds)
-        return list(self._db.heartbeats.find({
-            "factory_id": factory_id,
+        return list(self._db.sensor_readings.find({
+            "sensor_id": sensor_id,
             "timestamp": {"$gte": since}
         }).sort("timestamp", DESCENDING))
     
-    def get_all_latest_heartbeats(self) -> Dict[str, Dict]:
-        """Get the latest heartbeat for all factories"""
-        pipeline = [
-            {"$sort": {"timestamp": -1}},
-            {"$group": {
-                "_id": "$factory_id",
-                "latest": {"$first": "$$ROOT"}
-            }}
-        ]
-        result = {}
-        for doc in self._db.heartbeats.aggregate(pipeline):
-            result[doc["_id"]] = doc["latest"]
-        return result
+    def get_factory_sensor_readings(self, factory_id: str, limit: int = 100) -> List[Dict]:
+        """Get recent sensor readings for a factory"""
+        return list(self._db.sensor_readings.find(
+            {"factory_id": factory_id}
+        ).sort("timestamp", DESCENDING).limit(limit))
     
-    # Factory status operations
-    def update_factory_status(self, factory_id: str, status: str, risk_level: str = "LOW") -> bool:
-        """Update factory status"""
+    def get_factory_sensors(self, factory_id: str) -> List[Dict]:
+        """Get all sensors and their current status for a factory"""
+        return list(self._db.sensor_status.find({"factory_id": factory_id}))
+    
+    def get_sensor_status(self, sensor_id: str) -> Optional[Dict]:
+        """Get current sensor status"""
+        return self._db.sensor_status.find_one({"sensor_id": sensor_id})
+    
+    # Factory health operations
+    def update_factory_health(
+        self,
+        factory_id: str,
+        health_percentage: float,
+        status: str,
+        ok_count: int,
+        warning_count: int,
+        failed_count: int,
+        total_count: int
+    ) -> bool:
+        """Update factory health status"""
         try:
-            self._db.factory_status.update_one(
+            self._db.factory_health.update_one(
                 {"factory_id": factory_id},
                 {
                     "$set": {
-                        "current_status": status,
-                        "risk_level": risk_level,
+                        "health_percentage": health_percentage,
+                        "status": status,
+                        "sensors_ok": ok_count,
+                        "sensors_warning": warning_count,
+                        "sensors_failed": failed_count,
+                        "sensors_total": total_count,
                         "last_updated": datetime.utcnow()
                     }
                 },
@@ -126,68 +189,33 @@ class MongoDBClient:
             )
             return True
         except Exception as e:
-            logger.error(f"Failed to update factory status: {e}")
+            logger.error(f"Failed to update factory health: {e}")
             return False
     
+    def get_factory_health(self, factory_id: str) -> Optional[Dict]:
+        """Get current factory health"""
+        return self._db.factory_health.find_one({"factory_id": factory_id})
+    
+    def get_all_factory_health(self) -> List[Dict]:
+        """Get health for all factories"""
+        return list(self._db.factory_health.find())
+    
+    # Legacy methods kept for compatibility (mapped to new structure)
+    def update_factory_status(self, factory_id: str, status: str, risk_level: str = "LOW") -> bool:
+        """Update factory status (legacy compatibility)"""
+        return self.update_factory_health(
+            factory_id=factory_id,
+            health_percentage=100 if status == "UP" else (50 if status == "DEGRADED" else 0),
+            status=status,
+            ok_count=20 if status == "UP" else (10 if status == "DEGRADED" else 0),
+            warning_count=0,
+            failed_count=0 if status == "UP" else (10 if status == "DEGRADED" else 20),
+            total_count=20
+        )
+    
     def get_factory_status(self, factory_id: str) -> Optional[Dict]:
-        """Get current factory status"""
-        return self._db.factory_status.find_one({"factory_id": factory_id})
-    
-    def get_all_factory_statuses(self) -> List[Dict]:
-        """Get all factory statuses"""
-        return list(self._db.factory_status.find())
-    
-    def increment_missed_heartbeats(self, factory_id: str) -> int:
-        """Increment missed heartbeat counter and return new count"""
-        result = self._db.factory_status.find_one_and_update(
-            {"factory_id": factory_id},
-            {
-                "$inc": {"missed_heartbeats": 1},
-                "$set": {"last_updated": datetime.utcnow()}
-            },
-            upsert=True,
-            return_document=True
-        )
-        return result.get("missed_heartbeats", 1)
-    
-    def reset_missed_heartbeats(self, factory_id: str):
-        """Reset missed heartbeat counter"""
-        self._db.factory_status.update_one(
-            {"factory_id": factory_id},
-            {
-                "$set": {
-                    "missed_heartbeats": 0,
-                    "last_updated": datetime.utcnow()
-                }
-            },
-            upsert=True
-        )
-    
-    def increment_consecutive_healthy(self, factory_id: str) -> int:
-        """Increment consecutive healthy heartbeat counter"""
-        result = self._db.factory_status.find_one_and_update(
-            {"factory_id": factory_id},
-            {
-                "$inc": {"consecutive_healthy": 1},
-                "$set": {"last_updated": datetime.utcnow()}
-            },
-            upsert=True,
-            return_document=True
-        )
-        return result.get("consecutive_healthy", 1)
-    
-    def reset_consecutive_healthy(self, factory_id: str):
-        """Reset consecutive healthy counter"""
-        self._db.factory_status.update_one(
-            {"factory_id": factory_id},
-            {
-                "$set": {
-                    "consecutive_healthy": 0,
-                    "last_updated": datetime.utcnow()
-                }
-            },
-            upsert=True
-        )
+        """Get factory status (legacy compatibility)"""
+        return self.get_factory_health(factory_id)
     
     # Failover event operations
     def log_failover_event(self, factory_id: str, reason: str, target_factory: Optional[str] = None) -> bool:
