@@ -203,26 +203,38 @@ The Industry 4.0 Production Platform implements a **two-tier health model**: Sen
 #### Order Generation & Assignment
 The **Order Generator** service automates the production simulation:
 
-1. **Automatic Order Creation**: Generates orders every 15 seconds with random:
+1. **Batch Order Creation**: Generates orders in batches every 5 seconds with:
+   - Batch size: 1-5 orders per batch (randomly selected)
    - Product types: cola, pepsi, fanta, sprite, water
-   - Quantities: 100-1000 units
+   - Quantities: 100-1000 units per order
    - Priority levels: 1-5
+   - Production time: 5-10 seconds (adjusted by product type)
 
-2. **Health-Based Assignment**: Before creating each order:
-   - Queries MMS for current factory health status
-   - Filters for OPERATIONAL (≥80%) or DEGRADED (50-79%) factories
-   - Assigns order to the **healthiest available factory**
-   - Rejects order if no healthy factories available
+2. **Multi-Factory Distribution**: Each batch can be distributed across multiple factories:
+   - Intelligently assigns orders based on factory health and available capacity
+   - Respects factory capacity limits (max 5 orders per OPERATIONAL factory, scales down for DEGRADED factories)
+   - Can split a batch across 2-3 factories if the healthiest factory is at capacity
 
-3. **Automatic Failover**: Monitors factory health every 10 seconds:
+3. **Order Lifecycle**:
+   - **Pending**: Order created but not yet assigned
+   - **Assigned**: Assigned to a factory with available capacity
+   - **In Progress**: Factory begins processing (after 1 second)
+   - **Completed**: Order finishes after estimated production time
+
+4. **Load-Based Sensor Effects**:
+   - Orders increase factory load, affecting sensor readings
+   - Temperature increases: +0 to +5°C based on factory load percentage
+   - Quality sensor warnings: +10-20% higher probability under high load
+   - Failure rate multiplier: 1 + (load × 2), up to 3× at full capacity
+
+5. **Automatic Failover**: Monitors factory health every 10 seconds:
    - Detects factories in CRITICAL (<50%) or DOWN (<20%) status
    - Retrieves all orders assigned to failing factories
    - Automatically reschedules orders to healthiest available factory
    - Logs all failover operations
 
 This creates a closed-loop simulation where:
-- Sensor data → Factory health → Order assignment
-- Failed sensors → Low health → Automatic order rescheduling
+- Sensor data → Factory health → Order assignment → Load effects on sensors → Adaptive failover
 
 ### Storage Architecture
 

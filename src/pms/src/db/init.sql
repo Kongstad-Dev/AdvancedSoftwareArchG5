@@ -34,7 +34,7 @@ CREATE TABLE IF NOT EXISTS factory_assignments (
     assigned_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     completed_at TIMESTAMP,
     status VARCHAR(50) NOT NULL DEFAULT 'assigned',
-    UNIQUE(order_id, factory_id, assigned_at)
+    UNIQUE(order_id, factory_id)
 );
 
 -- Create production_events table for audit trail

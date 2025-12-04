@@ -421,6 +421,140 @@
             to { transform: rotate(360deg); }
         }
 
+        /* Control Panel */
+        .control-panel {
+            display: flex;
+            gap: 1rem;
+            margin-bottom: 1.5rem;
+            flex-wrap: wrap;
+        }
+
+        .control-btn {
+            padding: 0.75rem 1.5rem;
+            border: none;
+            border-radius: 8px;
+            font-size: 0.875rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .control-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+        }
+
+        .control-btn:active {
+            transform: translateY(0);
+        }
+
+        .control-btn.primary {
+            background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+            color: white;
+        }
+
+        .control-btn.primary:hover {
+            background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%);
+        }
+
+        .control-btn.danger {
+            background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+            color: white;
+        }
+
+        .control-btn.danger:hover {
+            background: linear-gradient(135deg, #dc2626 0%, #b91c1c 100%);
+        }
+
+        .control-btn.secondary {
+            background: linear-gradient(135deg, #6b7280 0%, #4b5563 100%);
+            color: white;
+        }
+
+        .control-btn.secondary:hover {
+            background: linear-gradient(135deg, #4b5563 0%, #374151 100%);
+        }
+
+        .control-btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        /* Factory Action Buttons */
+        .factory-actions {
+            display: flex;
+            gap: 0.5rem;
+            margin-top: 1rem;
+        }
+
+        .factory-action-btn {
+            flex: 1;
+            padding: 0.5rem 1rem;
+            border: none;
+            border-radius: 6px;
+            font-size: 0.8rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.3rem;
+        }
+
+        .factory-action-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+        }
+
+        .factory-action-btn:active {
+            transform: translateY(0);
+        }
+
+        .factory-action-btn.danger {
+            background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+            color: white;
+        }
+
+        .factory-action-btn.danger:hover {
+            background: linear-gradient(135deg, #dc2626 0%, #b91c1c 100%);
+        }
+
+        .factory-action-btn.warning {
+            background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+            color: white;
+        }
+
+        .factory-action-btn.warning:hover {
+            background: linear-gradient(135deg, #d97706 0%, #b45309 100%);
+        }
+
+        /* Toast Notification */
+        .toast {
+            position: fixed;
+            bottom: 2rem;
+            right: 2rem;
+            padding: 1rem 1.5rem;
+            border-radius: 8px;
+            color: white;
+            font-weight: 500;
+            z-index: 1000;
+            animation: slideIn 0.3s ease;
+        }
+
+        .toast.success { background: #22c55e; }
+        .toast.error { background: #ef4444; }
+        .toast.info { background: #3b82f6; }
+
+        @keyframes slideIn {
+            from { transform: translateX(100%); opacity: 0; }
+            to { transform: translateX(0); opacity: 1; }
+        }
+
         /* Last Updated */
         .last-updated {
             text-align: right;
@@ -481,6 +615,20 @@
 
         <!-- Factories Section -->
         <h2 class="section-title">Factory Health & Active Orders</h2>
+        
+        <!-- Control Panel -->
+        <div class="control-panel">
+            <button class="control-btn danger" onclick="triggerRandomFailure()">
+                💥 Trigger Random Factory Failure
+            </button>
+            <button class="control-btn primary" onclick="createNewOrder()">
+                ➕ Add New Order
+            </button>
+            <button class="control-btn secondary" onclick="clearStuckOrders()">
+                🔄 Clear Stuck Orders
+            </button>
+        </div>
+        
         <div class="factories-grid" id="factoriesGrid">
             <div class="loading">
                 <div class="loading-spinner"></div>
@@ -659,15 +807,24 @@
                         
                         <div class="sensors-detail">
                             <div class="sensors-by-type">
-                                ${renderSensorDots('Temp', 6, sensors)}
-                                ${renderSensorDots('Level', 6, sensors)}
-                                ${renderSensorDots('Quality', 8, sensors)}
+                                ${renderSensorDots('Temp', 2, sensors)}
+                                ${renderSensorDots('Level', 1, sensors)}
+                                ${renderSensorDots('Quality', 2, sensors)}
                             </div>
+                        </div>
+                        
+                        <div class="factory-actions">
+                            <button class="factory-action-btn danger" onclick="triggerFactoryFailure('${factory.factory_id}')">
+                                💥 Fail Sensors
+                            </button>
+                            <button class="factory-action-btn warning" onclick="triggerFactoryWarning('${factory.factory_id}')">
+                                ⚠️ Warn Sensors
+                            </button>
                         </div>
                         
                         <div class="factory-orders">
                             <div class="factory-orders-title">
-                                📦 Active Orders (${factoryOrders.length}/2)
+                                📦 Active Orders (${factoryOrders.length}/5)
                             </div>
                             <div class="factory-orders-list">
                                 ${factoryOrders.length > 0 ? factoryOrders.map(order => `
@@ -690,7 +847,7 @@
         function renderSensorDots(type, count, sensors) {
             const okCount = sensors.ok || 0;
             const warningCount = sensors.warning || 0;
-            const total = sensors.total || 20;
+            const total = sensors.total || 5;
             
             let dots = '';
             for (let i = 0; i < count; i++) {
@@ -793,6 +950,119 @@
                 'DOWN': 'health-down'
             };
             return map[status] || 'health-down';
+        }
+
+        // Show toast notification
+        function showToast(message, type = 'info') {
+            const toast = document.createElement('div');
+            toast.className = `toast ${type}`;
+            toast.textContent = message;
+            document.body.appendChild(toast);
+            setTimeout(() => toast.remove(), 3000);
+        }
+
+        // Trigger random factory failure
+        async function triggerRandomFailure() {
+            try {
+                const response = await fetch(`${config.mmsUrl}/api/factories/trigger-failure`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' }
+                });
+                const data = await response.json();
+                if (response.ok) {
+                    showToast(`💥 Triggered failure on ${data.factory_id}`, 'error');
+                } else {
+                    showToast(`Failed: ${data.error}`, 'error');
+                }
+            } catch (error) {
+                showToast(`Error: ${error.message}`, 'error');
+            }
+            fetchData(); // Refresh
+        }
+
+        // Trigger failure on specific factory
+        async function triggerFactoryFailure(factoryId) {
+            try {
+                const response = await fetch(`${config.mmsUrl}/api/factories/${factoryId}/trigger-failure`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' }
+                });
+                const data = await response.json();
+                if (response.ok && data.success) {
+                    showToast(`💥 Failed ${data.failed_sensors.length} sensor(s) on ${factoryId}`, 'error');
+                } else {
+                    showToast(`Failed: ${data.error || 'Unknown error'}`, 'error');
+                }
+            } catch (error) {
+                showToast(`Error: ${error.message}`, 'error');
+            }
+            fetchData(); // Refresh
+        }
+
+        async function triggerFactoryWarning(factoryId) {
+            try {
+                const response = await fetch(`${config.mmsUrl}/api/factories/${factoryId}/trigger-warning`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' }
+                });
+                const data = await response.json();
+                if (response.ok && data.success) {
+                    showToast(`⚠️ Warned ${data.warned_sensors.length} sensor(s) on ${factoryId}`, 'warning');
+                } else {
+                    showToast(`Failed: ${data.error || 'Unknown error'}`, 'error');
+                }
+            } catch (error) {
+                showToast(`Error: ${error.message}`, 'error');
+            }
+            fetchData(); // Refresh
+        }
+
+        // Create a new order
+        async function createNewOrder() {
+            const products = ['cola', 'pepsi', 'fanta', 'sprite', 'water'];
+            const product = products[Math.floor(Math.random() * products.length)];
+            const quantity = Math.floor(Math.random() * 900) + 100;
+            
+            try {
+                const response = await fetch(`${config.pmsUrl}/orders`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        productType: product,
+                        quantity: quantity,
+                        deadline: new Date(Date.now() + 3600000).toISOString(),
+                        priority: Math.floor(Math.random() * 3) + 1
+                    })
+                });
+                const data = await response.json();
+                if (response.ok) {
+                    showToast(`➕ Created order: ${product} x${quantity}`, 'success');
+                } else {
+                    showToast(`Failed: ${data.error}`, 'error');
+                }
+            } catch (error) {
+                showToast(`Error: ${error.message}`, 'error');
+            }
+            fetchData(); // Refresh
+        }
+
+        // Clear stuck orders (complete old assigned orders)
+        async function clearStuckOrders() {
+            try {
+                const response = await fetch(`${config.pmsUrl}/orders/clear-stuck`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' }
+                });
+                const data = await response.json();
+                if (response.ok) {
+                    showToast(`🔄 Cleared ${data.cleared || 0} stuck orders`, 'info');
+                } else {
+                    showToast(`Failed: ${data.error}`, 'error');
+                }
+            } catch (error) {
+                showToast(`Error: ${error.message}`, 'error');
+            }
+            fetchData(); // Refresh
         }
 
         // Start

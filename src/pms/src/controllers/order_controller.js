@@ -174,4 +174,30 @@ router.post('/reschedule', exceptionHandler.asyncHandler(async (req, res) => {
     });
 }));
 
+/**
+ * POST /orders/clear-stuck - Clear stuck orders (complete old assigned orders)
+ */
+router.post('/clear-stuck', exceptionHandler.asyncHandler(async (req, res) => {
+    const db = require('../db/database');
+    
+    // Complete orders that have been "assigned" for more than 30 seconds
+    const result = await db.query(
+        `UPDATE orders 
+         SET status = 'completed', updated_at = NOW() 
+         WHERE status = 'assigned' 
+         AND updated_at < NOW() - INTERVAL '30 seconds'
+         RETURNING id`
+    );
+    
+    const clearedCount = result.rowCount || 0;
+    
+    logger.info(`Cleared ${clearedCount} stuck orders via API`);
+
+    res.json({
+        success: true,
+        cleared: clearedCount,
+        message: `Completed ${clearedCount} stuck orders`
+    });
+}));
+
 module.exports = router;

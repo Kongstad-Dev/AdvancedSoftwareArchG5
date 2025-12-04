@@ -2,7 +2,7 @@
  * Factory Simulator
  * 
  * Simulates a factory by publishing sensor readings to MQTT.
- * Sensors: Temperature (6), Level (6), Quality (8) = 20 sensors per factory
+ * Sensors: Temperature (2), Level (1), Quality (2) = 5 sensors per factory
  * Can simulate sensor failures and warning states.
  * Load affects sensor readings - more orders = higher temperatures, more wear.
  */
@@ -37,6 +37,12 @@ const sensorReadingIntervalMs = parseInt(process.env.SENSOR_READING_INTERVAL_MS)
 const simulateFailures = process.env.SIMULATE_FAILURES === 'true';
 const failureProbability = parseFloat(process.env.FAILURE_PROBABILITY) || config.simulation.failureProbability;
 const pmsUrl = process.env.PMS_URL || 'http://pms:3000';
+
+// Only factories 3 and 4 get random sensor failures
+// Factories 1 and 2 are always stable for demonstrating successful order processing
+const unstableFactories = ['factory-3', 'factory-4'];
+const allowRandomFailures = unstableFactories.includes(factoryId);
+const stableFactory = !allowRandomFailures; // Factories 1 and 2 are stable (no failures or warnings)
 
 // State
 let mqttClient = null;
@@ -140,7 +146,8 @@ function updateSensorStates() {
             }
             
             // Check if sensor should fail (only if not already failed)
-            if (sensor.status !== 'FAILED' && simulateFailures && Math.random() < effectiveFailureProbability) {
+            // Only allow random failures on designated unstable factories (3 and 4)
+            if (sensor.status !== 'FAILED' && simulateFailures && allowRandomFailures && Math.random() < effectiveFailureProbability) {
                 sensor.status = 'FAILED';
                 sensor.failureEndTime = now + config.simulation.failureDurationMs;
                 stats.failures++;
@@ -166,21 +173,27 @@ function generateTemperatureReading(sensor) {
     // Calculate temperature increase based on load (up to 5°C increase at full load)
     const loadTempIncrease = currentLoad.loadFactor * 5;
     
-    // Higher chance of warning at higher load
-    const warningChance = 0.1 + (currentLoad.loadFactor * 0.2); // 10-30% warning chance
-    
-    if (Math.random() < warningChance) {
-        // Generate value in warning range (either low or high)
-        if (Math.random() < 0.5) {
-            value = randomInRange(tempConfig.warningRange.min, tempConfig.normalRange.min);
+    // Stable factories (1 & 2) don't generate warnings
+    if (!stableFactory) {
+        // Higher chance of warning at higher load (only for unstable factories)
+        const warningChance = 0.1 + (currentLoad.loadFactor * 0.2); // 10-30% warning chance
+        
+        if (Math.random() < warningChance) {
+            // Generate value in warning range (either low or high)
+            if (Math.random() < 0.5) {
+                value = randomInRange(tempConfig.warningRange.min, tempConfig.normalRange.min);
+            } else {
+                value = randomInRange(tempConfig.normalRange.max, tempConfig.warningRange.max) + loadTempIncrease;
+            }
+            status = 'WARNING';
+            stats.warnings++;
         } else {
-            value = randomInRange(tempConfig.normalRange.max, tempConfig.warningRange.max) + loadTempIncrease;
+            // Normal value with load-based increase
+            value = randomInRange(tempConfig.normalRange.min, tempConfig.normalRange.max) + (loadTempIncrease * 0.5);
         }
-        status = 'WARNING';
-        stats.warnings++;
     } else {
-        // Normal value with load-based increase
-        value = randomInRange(tempConfig.normalRange.min, tempConfig.normalRange.max) + (loadTempIncrease * 0.5);
+        // Stable factories always have OK status
+        value = randomInRange(tempConfig.normalRange.min, tempConfig.normalRange.max) + (loadTempIncrease * 0.3);
     }
     
     return {
@@ -208,18 +221,24 @@ function generateLevelReading(sensor) {
     let value;
     let status = 'OK';
     
-    // Higher chance of warning at higher load (tanks being used more)
-    const warningChance = 0.1 + (currentLoad.loadFactor * 0.15); // 10-25% warning chance
-    
-    if (Math.random() < warningChance) {
-        if (Math.random() < 0.5) {
-            value = randomInRange(levelConfig.warningRange.min, levelConfig.normalRange.min);
+    // Stable factories never generate warnings
+    if (!stableFactory) {
+        // Higher chance of warning at higher load (tanks being used more)
+        const warningChance = 0.1 + (currentLoad.loadFactor * 0.15); // 10-25% warning chance
+        
+        if (Math.random() < warningChance) {
+            if (Math.random() < 0.5) {
+                value = randomInRange(levelConfig.warningRange.min, levelConfig.normalRange.min);
+            } else {
+                value = randomInRange(levelConfig.normalRange.max, levelConfig.warningRange.max);
+            }
+            status = 'WARNING';
+            stats.warnings++;
         } else {
-            value = randomInRange(levelConfig.normalRange.max, levelConfig.warningRange.max);
+            value = randomInRange(levelConfig.normalRange.min, levelConfig.normalRange.max);
         }
-        status = 'WARNING';
-        stats.warnings++;
     } else {
+        // Stable factory always OK
         value = randomInRange(levelConfig.normalRange.min, levelConfig.normalRange.max);
     }
     
@@ -247,18 +266,24 @@ function generateQualityReading(sensor) {
     let value;
     let status = 'OK';
     
-    // Higher chance of warning at higher load (quality control harder with more production)
-    const warningChance = 0.1 + (currentLoad.loadFactor * 0.15); // 10-25% warning chance
-    
-    if (Math.random() < warningChance) {
-        if (Math.random() < 0.5) {
-            value = randomInRange(sensor.warningRange.min, sensor.normalRange.min);
+    // Stable factories never generate warnings
+    if (!stableFactory) {
+        // Higher chance of warning at higher load (quality control harder with more production)
+        const warningChance = 0.1 + (currentLoad.loadFactor * 0.15); // 10-25% warning chance
+        
+        if (Math.random() < warningChance) {
+            if (Math.random() < 0.5) {
+                value = randomInRange(sensor.warningRange.min, sensor.normalRange.min);
+            } else {
+                value = randomInRange(sensor.normalRange.max, sensor.warningRange.max);
+            }
+            status = 'WARNING';
+            stats.warnings++;
         } else {
-            value = randomInRange(sensor.normalRange.max, sensor.warningRange.max);
+            value = randomInRange(sensor.normalRange.min, sensor.normalRange.max);
         }
-        status = 'WARNING';
-        stats.warnings++;
     } else {
+        // Stable factory always OK
         value = randomInRange(sensor.normalRange.min, sensor.normalRange.max);
     }
     

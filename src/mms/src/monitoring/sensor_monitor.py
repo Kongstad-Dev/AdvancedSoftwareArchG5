@@ -73,6 +73,8 @@ class SensorMonitor:
         self._sensor_statuses: Dict[str, SensorStatus] = {}
         # Track sensors per factory
         self._factory_sensors: Dict[str, set] = {}
+        # Track manually failed sensors with recovery time
+        self._manual_failures: Dict[str, datetime] = {}  # sensor_id -> recovery_time
         # Callbacks
         self._on_sensor_failed_callbacks: List[Callable] = []
         self._on_factory_status_change_callbacks: List[Callable] = []
@@ -122,6 +124,21 @@ class SensorMonitor:
             if factory_id not in self._factory_sensors:
                 self._factory_sensors[factory_id] = set()
             self._factory_sensors[factory_id].add(sensor_id)
+            
+            # Check if this sensor is manually failed and shouldn't recover yet
+            now = datetime.utcnow()
+            if sensor_id in self._manual_failures:
+                recovery_time = self._manual_failures[sensor_id]
+                if now < recovery_time:
+                    # Check if this is a manual WARNING or FAILED
+                    current_status = self._sensor_statuses.get(sensor_id)
+                    # Override status to keep it at the last set status (FAILED or WARNING)
+                    status = current_status if current_status else SensorStatus.FAILED
+                    logger.debug(f"Sensor {sensor_id} kept {status.value} (manual trigger, recovers at {recovery_time})")
+                else:
+                    # Recovery time passed, remove from manual failures
+                    del self._manual_failures[sensor_id]
+                    logger.info(f"Sensor {sensor_id} manual status expired, allowing recovery")
             
             # Update tracking
             previous_status = self._sensor_statuses.get(sensor_id)
@@ -308,6 +325,39 @@ class SensorMonitor:
             sensor_id: self._sensor_statuses.get(sensor_id, SensorStatus.OK)
             for sensor_id in sensors
         }
+    
+    def update_sensor_status(self, factory_id: str, sensor_id: str, new_status: SensorStatus, duration_seconds: int = 30):
+        """
+        Manually update sensor status (for triggering failures via API).
+        
+        Args:
+            factory_id: The factory ID
+            sensor_id: The sensor ID to update
+            new_status: The new status to set
+            duration_seconds: How long the manual status should persist (default 30 seconds)
+        """
+        previous_status = self._sensor_statuses.get(sensor_id)
+        self._sensor_statuses[sensor_id] = new_status
+        
+        recovery_time = datetime.utcnow() + timedelta(seconds=duration_seconds)
+        
+        # If setting to FAILED, prevent recovery for duration_seconds
+        if new_status == SensorStatus.FAILED:
+            self._manual_failures[sensor_id] = recovery_time
+            logger.info(f"Sensor {sensor_id} manually failed, will recover after {duration_seconds}s")
+            
+            if previous_status != SensorStatus.FAILED:
+                self._notify_sensor_failed(sensor_id, factory_id, f"Manual failure trigger ({duration_seconds}s)")
+        
+        # If setting to WARNING, persist it for duration_seconds
+        elif new_status == SensorStatus.WARNING:
+            self._manual_failures[sensor_id] = recovery_time
+            logger.info(f"Sensor {sensor_id} manually warned, will recover after {duration_seconds}s")
+        
+        # Recalculate factory health
+        self._update_factory_health(factory_id)
+        
+        logger.info(f"Sensor {sensor_id} status updated: {previous_status} -> {new_status}")
 
 
 # Global instance

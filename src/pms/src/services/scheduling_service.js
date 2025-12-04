@@ -78,13 +78,47 @@ class SchedulingService {
      * @returns {Promise<Object>} Best factory or null
      */
     async findBestFactory(client) {
-        const result = await client.query(
-            `SELECT * FROM factories 
-             WHERE status = 'UP' AND current_load < capacity 
-             ORDER BY (capacity - current_load) DESC
-             LIMIT 1`
+        // Get all factories that are UP
+        const factoriesResult = await client.query(
+            `SELECT * FROM factories WHERE status = 'UP'`
         );
-        return result.rows[0];
+        const factories = factoriesResult.rows;
+
+        if (factories.length === 0) {
+            return null;
+        }
+
+        const MAX_CAPACITY = 5;
+
+        // For each factory, count its real active orders
+        const factoriesWithCapacity = [];
+        for (const factory of factories) {
+            const capacityResult = await client.query(
+                `SELECT COUNT(DISTINCT fa.order_id) as active_orders 
+                 FROM factory_assignments fa
+                 JOIN orders o ON fa.order_id = o.id
+                 WHERE fa.factory_id = $1 AND o.status IN ('assigned', 'in_progress')`,
+                [factory.id]
+            );
+            const activeOrders = parseInt(capacityResult.rows[0].active_orders) || 0;
+            
+            if (activeOrders < MAX_CAPACITY) {
+                factoriesWithCapacity.push({
+                    ...factory,
+                    activeOrders
+                });
+            }
+        }
+
+        // Return factory with most available capacity
+        if (factoriesWithCapacity.length === 0) {
+            return null;
+        }
+
+        factoriesWithCapacity.sort((a, b) => 
+            (MAX_CAPACITY - a.activeOrders) - (MAX_CAPACITY - b.activeOrders)
+        );
+        return factoriesWithCapacity[0];
     }
 
     /**
@@ -245,18 +279,34 @@ class SchedulingService {
                         throw new Error(`Factory ${factoryId} is not available (status: ${factory.status})`);
                     }
 
-                    if (factory.current_load >= factory.capacity) {
-                        throw new Error(`Factory ${factoryId} is at full capacity`);
+                    // Count actual active orders for this factory (not using stale current_load field)
+                    const capacityResult = await client.query(
+                        `SELECT COUNT(DISTINCT fa.order_id) as active_orders 
+                         FROM factory_assignments fa
+                         JOIN orders o ON fa.order_id = o.id
+                         WHERE fa.factory_id = $1 AND o.status IN ('assigned', 'in_progress')`,
+                        [factoryId]
+                    );
+                    const activeOrders = parseInt(capacityResult.rows[0].active_orders) || 0;
+                    const MAX_CAPACITY = 5;
+                    
+                    if (activeOrders >= MAX_CAPACITY) {
+                        throw new Error(`Factory ${factoryId} is at full capacity (${activeOrders}/${MAX_CAPACITY} orders)`);
                     }
 
                     // Create assignment
                     const assignmentResult = await client.query(
                         `INSERT INTO factory_assignments (order_id, factory_id, status)
                          VALUES ($1, $2, 'assigned')
-                         ON CONFLICT (order_id, factory_id, assigned_at) DO UPDATE SET status = 'assigned'
+                         ON CONFLICT (order_id, factory_id) DO NOTHING
                          RETURNING *`,
                         [orderId, factoryId]
                     );
+
+                    // If no rows returned, the order was already assigned to this factory
+                    if (assignmentResult.rows.length === 0) {
+                        throw new Error(`Order ${orderId} is already assigned to factory ${factoryId}`);
+                    }
 
                     // Update factory load
                     await client.query(

@@ -348,6 +348,125 @@ async def get_status():
     }
 
 
+@app.post("/api/factories/trigger-failure")
+async def trigger_random_failure():
+    """Trigger a random sensor failure on a random factory"""
+    import random
+    
+    all_health = sensor_monitor.get_all_factory_health()
+    factory_ids = list(all_health.keys())
+    
+    if not factory_ids:
+        return {"error": "No factories available"}
+    
+    # Pick a random factory
+    factory_id = random.choice(factory_ids)
+    
+    # Get factory sensors
+    sensors = sensor_monitor.get_factory_sensors(factory_id)
+    ok_sensors = [sid for sid, status in sensors.items() if status.value == "OK"]
+    
+    if not ok_sensors:
+        return {"error": "No healthy sensors to fail", "factory_id": factory_id}
+    
+    # Pick random sensors to fail (1-3 sensors)
+    num_to_fail = min(random.randint(1, 3), len(ok_sensors))
+    sensors_to_fail = random.sample(ok_sensors, num_to_fail)
+    
+    # Mark sensors as failed (persist for 60 seconds)
+    from .monitoring.sensor_monitor import SensorStatus
+    for sensor_id in sensors_to_fail:
+        sensor_monitor.update_sensor_status(factory_id, sensor_id, SensorStatus.FAILED, duration_seconds=60)
+    
+    logger.info(f"Triggered failure on {factory_id}: {sensors_to_fail}")
+    
+    return {
+        "success": True,
+        "factory_id": factory_id,
+        "failed_sensors": sensors_to_fail,
+        "message": f"Failed {num_to_fail} sensors on {factory_id} (60s duration)"
+    }
+
+
+@app.post("/api/factories/{factory_id}/trigger-failure")
+async def trigger_specific_failure(factory_id: str):
+    """Trigger a sensor failure on a specific factory"""
+    import random
+    
+    all_health = sensor_monitor.get_all_factory_health()
+    
+    if factory_id not in all_health:
+        return {"error": f"Factory {factory_id} not found", "success": False}
+    
+    # Get factory sensors
+    sensors = sensor_monitor.get_factory_sensors(factory_id)
+    ok_sensors = [sid for sid, status in sensors.items() if status.value == "OK"]
+    
+    if not ok_sensors:
+        return {"error": "No healthy sensors to fail", "factory_id": factory_id, "success": False}
+    
+    # Pick random sensors to fail (1-2 sensors)
+    num_to_fail = min(random.randint(1, 2), len(ok_sensors))
+    sensors_to_fail = random.sample(ok_sensors, num_to_fail)
+    
+    # Mark sensors as failed (persist for 60 seconds)
+    from .monitoring.sensor_monitor import SensorStatus
+    for sensor_id in sensors_to_fail:
+        sensor_monitor.update_sensor_status(factory_id, sensor_id, SensorStatus.FAILED, duration_seconds=60)
+    
+    logger.info(f"Triggered failure on {factory_id}: {sensors_to_fail} (60s duration)")
+    
+    return {
+        "success": True,
+        "factory_id": factory_id,
+        "failed_sensors": sensors_to_fail,
+        "message": f"Failed {num_to_fail} sensors on {factory_id} (60s duration)"
+    }
+
+
+@app.post("/api/factories/{factory_id}/trigger-warning")
+async def trigger_specific_warning(factory_id: str):
+    """Trigger a sensor warning on a specific factory"""
+    import random
+    
+    all_health = sensor_monitor.get_all_factory_health()
+    
+    if factory_id not in all_health:
+        return {"error": f"Factory {factory_id} not found", "success": False}
+    
+    # Get factory sensors
+    sensors = sensor_monitor.get_factory_sensors(factory_id)
+    ok_sensors = [sid for sid, status in sensors.items() if status.value == "OK"]
+    
+    if not ok_sensors:
+        return {"error": "No healthy sensors to warn", "factory_id": factory_id, "success": False}
+    
+    # Pick random sensors to warn (1-2 sensors)
+    num_to_warn = min(random.randint(1, 2), len(ok_sensors))
+    sensors_to_warn = random.sample(ok_sensors, num_to_warn)
+    
+    # Mark sensors as warning (persist for 30 seconds)
+    from .monitoring.sensor_monitor import SensorStatus
+    for sensor_id in sensors_to_warn:
+        sensor_monitor.update_sensor_status(factory_id, sensor_id, SensorStatus.WARNING, duration_seconds=30)
+    
+    logger.info(f"Triggered warning on {factory_id}: {sensors_to_warn} (30s duration)")
+    
+    return {
+        "success": True,
+        "factory_id": factory_id,
+        "warned_sensors": sensors_to_warn,
+        "message": f"Warned {num_to_warn} sensors on {factory_id} (30s duration)"
+    }
+
+
+@app.post("/api/factories/{factory_id}/load")
+async def update_factory_load(factory_id: str, load_data: dict = None):
+    """Receive factory load updates from order-generator"""
+    # This is a notification endpoint - just acknowledge it
+    return {"success": True, "factory_id": factory_id}
+
+
 def main():
     """Main entry point"""
     uvicorn.run(

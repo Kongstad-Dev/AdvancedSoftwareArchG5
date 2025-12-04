@@ -296,9 +296,11 @@ services:
       PMS_URL: http://pms:3000
       MMS_URL: http://mms:8000
       ORDER_INTERVAL_MS: 5000
-      MAX_ORDERS_PER_FACTORY: 2
+      MAX_ORDERS_PER_FACTORY: 5
       MIN_COMPLETION_TIME: 5000
       MAX_COMPLETION_TIME: 10000
+      MIN_BATCH_SIZE: 1
+      MAX_BATCH_SIZE: 5
     networks:
       - industry4-network
 
