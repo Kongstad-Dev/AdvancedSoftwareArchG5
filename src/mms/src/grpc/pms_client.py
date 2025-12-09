@@ -154,6 +154,60 @@ class PMSClient:
             "message": f"All retries failed: {last_error}"
         }
     
+    async def replace_sensor(
+        self,
+        factory_id: str,
+        failed_sensor_id: str,
+        replacement_sensor_id: str
+    ) -> dict:
+        """
+        Notify PMS to replace a failed sensor with a healthy one.
+        
+        Args:
+            factory_id: Factory identifier
+            failed_sensor_id: ID of the failed sensor
+            replacement_sensor_id: ID of the replacement sensor
+            
+        Returns:
+            Response from PMS
+        """
+        import httpx
+        
+        try:
+            # Use REST endpoint to replace sensor
+            pms_url = f"http://{config.pms_grpc_host}:3000/factories/{factory_id}/replace-sensor"
+            
+            async with httpx.AsyncClient() as client:
+                response = await client.post(
+                    pms_url,
+                    json={
+                        "failedSensorId": failed_sensor_id,
+                        "replacementSensorId": replacement_sensor_id
+                    },
+                    timeout=10.0
+                )
+                
+                if response.status_code == 200:
+                    data = response.json()
+                    logger.info(f"Sensor replacement successful: {failed_sensor_id} -> {replacement_sensor_id}")
+                    return {
+                        "success": True,
+                        "message": "Sensor replaced successfully"
+                    }
+                else:
+                    logger.error(f"PMS sensor replacement failed: {response.status_code} - {response.text}")
+                    return {
+                        "success": False,
+                        "error": f"PMS error: {response.status_code}"
+                    }
+                    
+        except Exception as e:
+            logger.error(f"Failed to replace sensor: {e}")
+            return {
+                "success": False,
+                "error": str(e)
+            }
+    
     def close(self):
         """Close the gRPC channel"""
         if self._channel:

@@ -11,6 +11,7 @@ from contextlib import asynccontextmanager
 from typing import Optional
 
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
 from kafka import KafkaConsumer
 from kafka.errors import KafkaError
@@ -20,6 +21,8 @@ from .db.mongodb import mongodb_client
 from .monitoring.heartbeat_monitor import heartbeat_monitor
 from .monitoring.fault_detector import fault_detector
 from .monitoring.factory_status import factory_status_manager, FactoryStatus
+from .monitoring.sensor_health_monitor import sensor_health_monitor
+from .monitoring.mqtt_listener import factory_mqtt_listener
 from .predictive.risk_predictor import risk_predictor
 from .redundancy.failover_manager import failover_manager
 from .redundancy.recovery_manager import recovery_manager
@@ -211,6 +214,10 @@ async def lifespan(app: FastAPI):
     # Connect to PMS
     pms_client.connect()
     
+    # Connect to MQTT for sensor monitoring
+    if not factory_mqtt_listener.connect():
+        logger.warning("Failed to connect to MQTT broker - sensor monitoring disabled")
+    
     # Setup callbacks
     setup_callbacks()
     
@@ -227,6 +234,7 @@ async def lifespan(app: FastAPI):
     shutdown_event.set()
     
     kafka_consumer.stop()
+    factory_mqtt_listener.stop()
     heartbeat_monitor.stop_monitoring()
     mongodb_client.close()
     pms_client.close()
@@ -254,6 +262,15 @@ app = FastAPI(
     description="Factory monitoring, fault detection, and failover management",
     version="1.0.0",
     lifespan=lifespan
+)
+
+# Add CORS middleware to allow dashboard access
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:8080", "http://localhost:3000"],  # Dashboard and other services
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 # Include health router
@@ -306,6 +323,127 @@ async def get_factory(factory_id: str):
         "missed_heartbeats": mongo_status.get("missed_heartbeats", 0) if mongo_status else 0,
         "last_updated": mongo_status.get("last_updated").isoformat() if mongo_status and mongo_status.get("last_updated") else None
     }
+
+
+@app.get("/factories/{factory_id}/sensors")
+async def get_factory_sensors(factory_id: str):
+    """Get sensor health status for a factory"""
+    sensor_summary = sensor_health_monitor.get_factory_sensor_summary(factory_id)
+    return {
+        "success": True,
+        "data": sensor_summary
+    }
+
+
+@app.get("/sensors/{sensor_id}")
+async def get_sensor(sensor_id: str):
+    """Get specific sensor status"""
+    sensor_status = sensor_health_monitor.get_sensor_status(sensor_id)
+    if not sensor_status:
+        return {"success": False, "error": "Sensor not found"}
+    
+    return {
+        "success": True,
+        "data": sensor_status
+    }
+
+
+@app.post("/factories/{factory_id}/sensors/fix-failed")
+async def fix_failed_sensors(factory_id: str):
+    """Fix all failed sensors for a factory (simulate recovery)"""
+    try:
+        failed_sensors = sensor_health_monitor.get_failed_sensors(factory_id)
+        if not failed_sensors:
+            return {
+                "success": True,
+                "message": "No failed sensors to fix",
+                "recovered_count": 0
+            }
+        
+        recovered_sensor_ids = [s.sensor_id for s in failed_sensors]
+        recovered_count = sensor_health_monitor.recover_factory_sensors(factory_id, recovered_sensor_ids)
+        
+        logger.info(f"Fixed {recovered_count} failed sensors for factory {factory_id}")
+        
+        return {
+            "success": True,
+            "message": f"Fixed {recovered_count} failed sensors",
+            "recovered_count": recovered_count,
+            "recovered_sensors": recovered_sensor_ids
+        }
+    except Exception as e:
+        logger.error(f"Failed to fix sensors for factory {factory_id}: {e}")
+        return {
+            "success": False,
+            "error": str(e)
+        }
+
+
+@app.post("/factories/{factory_id}/sensors/check-at-risk")
+async def check_at_risk_sensors(factory_id: str):
+    """Get detailed information about at-risk sensors and reset their risk tracking"""
+    try:
+        at_risk_sensors = []
+        sensors_reset = []
+        
+        # Get all sensors for this factory
+        factory_sensor_ids = sensor_health_monitor._factory_sensors.get(factory_id, set())
+        
+        for sensor_id in factory_sensor_ids:
+            risk_status = risk_predictor.get_sensor_risk_status(sensor_id)
+            if risk_status and risk_status['is_at_risk']:
+                at_risk_sensors.append(risk_status)
+                
+                # Reset the risk tracking for this sensor
+                if sensor_id in risk_predictor._sensor_risk_tracking:
+                    del risk_predictor._sensor_risk_tracking[sensor_id]
+                    sensors_reset.append(sensor_id)
+        
+        logger.info(
+            f"Checked and reset at-risk sensors for factory {factory_id}: "
+            f"found {len(at_risk_sensors)} sensors, reset {len(sensors_reset)} sensors"
+        )
+        
+        return {
+            "success": True,
+            "factory_id": factory_id,
+            "at_risk_count": len(at_risk_sensors),
+            "at_risk_sensors": at_risk_sensors,
+            "sensors_reset": sensors_reset
+        }
+    except Exception as e:
+        logger.error(f"Failed to check/reset at-risk sensors for factory {factory_id}: {e}")
+        return {
+            "success": False,
+            "error": str(e)
+        }
+
+
+@app.post("/system/reset")
+async def reset_system():
+    """Reset all sensor health and risk data"""
+    try:
+        # Clear all sensor health data
+        sensor_health_monitor._sensors.clear()
+        sensor_health_monitor._factory_sensors.clear()
+        sensor_health_monitor._failed_sensors.clear()
+        
+        # Clear all risk predictor data
+        risk_predictor._sensor_risk_tracking.clear()
+        risk_predictor._risk_history.clear()
+        
+        logger.info("MMS system reset completed - all sensor and risk data cleared")
+        
+        return {
+            "success": True,
+            "message": "MMS system reset successfully"
+        }
+    except Exception as e:
+        logger.error(f"Failed to reset MMS system: {e}")
+        return {
+            "success": False,
+            "error": str(e)
+        }
 
 
 def main():

@@ -23,6 +23,41 @@ class RiskLevel(Enum):
     HIGH = "HIGH"
 
 
+class SensorRiskStatus:
+    """Tracks risk status for individual sensors based on low readings"""
+    
+    def __init__(self, sensor_id: str, factory_id: str):
+        self.sensor_id = sensor_id
+        self.factory_id = factory_id
+        self.low_reading_count = 0
+        self.recent_readings: List[float] = []
+        self.is_at_risk = False
+        self.last_updated = datetime.utcnow()
+    
+    def add_reading(self, reading: float, threshold: float = 70.0) -> bool:
+        """Add a reading and check if sensor is at risk. Returns True if risk status changed."""
+        self.recent_readings.append(reading)
+        # Keep only last 5 readings for analysis
+        if len(self.recent_readings) > 5:
+            self.recent_readings.pop(0)
+        
+        self.last_updated = datetime.utcnow()
+        
+        # Count consecutive low readings
+        if reading < threshold:
+            self.low_reading_count += 1
+        else:
+            self.low_reading_count = 0
+            # Note: At-risk status is NOT cleared here - it persists until factory restart
+        
+        # Mark as at-risk if 3 consecutive low readings
+        if self.low_reading_count >= 3 and not self.is_at_risk:
+            self.is_at_risk = True
+            return True
+        
+        return False
+
+
 @dataclass
 class RiskAssessment:
     """Represents a risk assessment for a factory"""
@@ -46,6 +81,7 @@ class RiskPredictor:
     
     def __init__(self):
         self._risk_history: Dict[str, List[RiskAssessment]] = {}
+        self._sensor_risk_tracking: Dict[str, SensorRiskStatus] = {}  # sensor_id -> SensorRiskStatus
     
     def predict_factory_risk(self, factory_id: str) -> RiskAssessment:
         """
@@ -264,7 +300,7 @@ class RiskPredictor:
                    f"Available targets: {healthy_factories}")
         return True
     
-    def get_risk_history(self, factory_id: str, limit: int = 10) -> List[RiskAssessment]:
+    def get_risk_history(self, factory_id: str, limit: int = 20) -> List[RiskAssessment]:
         """Get recent risk assessment history for a factory"""
         history = self._risk_history.get(factory_id, [])
         return history[-limit:]
@@ -278,6 +314,63 @@ class RiskPredictor:
             risks[factory_id] = self.predict_factory_risk(factory_id)
         
         return risks
+    
+    def track_sensor_reading(self, sensor_id: str, factory_id: str, reading: float, threshold: float = 10.0) -> Optional[Dict]:
+        """
+        Track a sensor reading and check if sensor is at risk.
+        Returns sensor info dict if sensor becomes at-risk, None otherwise.
+        
+        Args:
+            sensor_id: Sensor identifier (e.g., 'S1-1')
+            factory_id: Factory identifier (e.g., 'F1')
+            reading: The sensor reading value
+            threshold: Threshold below which readings are considered low (default: 10.0)
+            
+        Returns:
+            Dict with sensor info if risk status changed to at-risk, None otherwise
+        """
+        if sensor_id not in self._sensor_risk_tracking:
+            self._sensor_risk_tracking[sensor_id] = SensorRiskStatus(sensor_id, factory_id)
+        
+        sensor_status = self._sensor_risk_tracking[sensor_id]
+        status_changed = sensor_status.add_reading(reading, threshold)
+        
+        if status_changed and sensor_status.is_at_risk:
+            logger.warning(
+                f"⚠️ SENSOR AT RISK: {sensor_id} in {factory_id} - "
+                f"{sensor_status.low_reading_count} consecutive readings below {threshold} "
+                f"(recent readings: {sensor_status.recent_readings})"
+            )
+            return {
+                "sensor_id": sensor_id,
+                "factory_id": factory_id,
+                "low_reading_count": sensor_status.low_reading_count,
+                "recent_readings": sensor_status.recent_readings.copy(),
+                "threshold": threshold
+            }
+        
+        return None
+    
+    def get_sensor_risk_status(self, sensor_id: str) -> Optional[Dict]:
+        """Get current risk status for a sensor"""
+        if sensor_id not in self._sensor_risk_tracking:
+            return None
+        
+        status = self._sensor_risk_tracking[sensor_id]
+        return {
+            "sensor_id": status.sensor_id,
+            "factory_id": status.factory_id,
+            "is_at_risk": status.is_at_risk,
+            "low_reading_count": status.low_reading_count,
+            "recent_readings": status.recent_readings.copy(),
+            "last_updated": status.last_updated.isoformat()
+        }
+    
+    def reset_sensor_risk(self, sensor_id: str):
+        """Reset risk tracking for a sensor (e.g., when sensor is replaced)"""
+        if sensor_id in self._sensor_risk_tracking:
+            del self._sensor_risk_tracking[sensor_id]
+            logger.info(f"Reset risk tracking for sensor {sensor_id}")
 
 
 # Global instance

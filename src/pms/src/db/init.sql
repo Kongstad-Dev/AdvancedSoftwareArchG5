@@ -7,6 +7,7 @@ CREATE TABLE IF NOT EXISTS orders (
     order_id VARCHAR(50) UNIQUE NOT NULL,
     product_type VARCHAR(100) NOT NULL,
     quantity INTEGER NOT NULL CHECK (quantity > 0),
+    completed_quantity INTEGER NOT NULL DEFAULT 0,
     deadline TIMESTAMP NOT NULL,
     status VARCHAR(50) NOT NULL DEFAULT 'pending',
     priority INTEGER DEFAULT 1,
@@ -18,7 +19,6 @@ CREATE TABLE IF NOT EXISTS orders (
 CREATE TABLE IF NOT EXISTS factories (
     id VARCHAR(50) PRIMARY KEY,
     name VARCHAR(100) NOT NULL,
-    capacity INTEGER NOT NULL DEFAULT 100,
     current_load INTEGER NOT NULL DEFAULT 0,
     status VARCHAR(20) NOT NULL DEFAULT 'UP',
     last_heartbeat TIMESTAMP,
@@ -31,10 +31,14 @@ CREATE TABLE IF NOT EXISTS factory_assignments (
     id SERIAL PRIMARY KEY,
     order_id INTEGER REFERENCES orders(id) ON DELETE CASCADE,
     factory_id VARCHAR(50) REFERENCES factories(id) ON DELETE CASCADE,
+    product_type VARCHAR(100) NOT NULL,
+    assigned_quantity INTEGER NOT NULL,
+    completed_quantity INTEGER NOT NULL DEFAULT 0,
+    sensor_id VARCHAR(50),
     assigned_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     completed_at TIMESTAMP,
     status VARCHAR(50) NOT NULL DEFAULT 'assigned',
-    UNIQUE(order_id, factory_id, assigned_at)
+    UNIQUE(order_id, factory_id)
 );
 
 -- Create production_events table for audit trail
@@ -56,11 +60,11 @@ CREATE INDEX IF NOT EXISTS idx_production_events_factory_id ON production_events
 CREATE INDEX IF NOT EXISTS idx_production_events_created_at ON production_events(created_at);
 
 -- Insert default factories
-INSERT INTO factories (id, name, capacity, status) VALUES
-    ('factory-1', 'Factory Alpha', 100, 'UP'),
-    ('factory-2', 'Factory Beta', 100, 'UP'),
-    ('factory-3', 'Factory Gamma', 100, 'UP'),
-    ('factory-4', 'Factory Delta', 100, 'UP')
+INSERT INTO factories (id, name, status) VALUES
+    ('F1', 'Factory 1', 'UP'),
+    ('F2', 'Factory 2', 'UP'),
+    ('F3', 'Factory 3', 'UP'),
+    ('F4', 'Factory 4', 'UP')
 ON CONFLICT (id) DO NOTHING;
 
 -- Create function to update updated_at timestamp

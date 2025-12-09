@@ -1,6 +1,7 @@
 const express = require('express');
 const schedulingService = require('../services/scheduling_service');
 const orderRepository = require('../repositories/order_repository');
+const configManager = require('../services/config_manager');
 const exceptionHandler = require('../services/exception_handler');
 const logger = require('../utils/logger');
 
@@ -43,6 +44,25 @@ router.post('/', exceptionHandler.asyncHandler(async (req, res) => {
         deadline: deadlineDate,
         priority: priority || 1
     });
+
+    // Auto-assign to factory with least workload and update config
+    try {
+        await configManager.assignOrderToFactory(
+            result.order.id,
+            productType,  // Use the original productType from request
+            result.order.quantity
+        );
+        logger.info('Order auto-assigned to factory', { 
+            orderId: result.order.id,
+            productType: productType 
+        });
+    } catch (assignError) {
+        logger.error('Failed to auto-assign order to factory', { 
+            orderId: result.order.id, 
+            error: assignError.message 
+        });
+        // Continue even if assignment fails - order is still created
+    }
 
     logger.info('Order created via REST API', { orderId: result.order.order_id });
 

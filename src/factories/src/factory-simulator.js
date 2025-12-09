@@ -1,341 +1,528 @@
 /**
  * Factory Simulator
  * 
- * Simulates a factory by publishing heartbeats to MQTT.
- * Can simulate failures, degraded states, and various metrics.
+ * Simulates factories with sensors that:
+ * - Send heartbeats to MQTT topic factory/{factoryId}/heartbeat
+ * - Send sensor readings to MQTT topic factory/{factoryId}/readings
+ * - Process production orders from configuration
+ * - MQTT messages are bridged to Kafka topics SENSOR_HEARTBEAT and SENSOR_READINGS
  */
 
 const mqtt = require('mqtt');
-const winston = require('winston');
-const config = require('./config');
+const fs = require('fs');
+const path = require('path');
 
-// Configure logger
-const logger = winston.createLogger({
-    level: process.env.LOG_LEVEL || 'info',
-    format: winston.format.combine(
-        winston.format.timestamp(),
-        winston.format.json()
-    ),
-    defaultMeta: { service: 'factory-simulator' },
-    transports: [
-        new winston.transports.Console({
-            format: winston.format.combine(
-                winston.format.colorize(),
-                winston.format.simple()
-            )
-        })
-    ]
-});
+// Configuration
+const MQTT_BROKER = process.env.MQTT_BROKER || 'mqtt://localhost:1883';
+const FACTORY_ID = process.env.FACTORY_ID || 'F1';
+const CONFIG_FILE = process.env.CONFIG_FILE || '/app/config/factory_config.json';
+const CONFIG_POLL_INTERVAL = parseInt(process.env.CONFIG_POLL_INTERVAL) || 3000; // 3 seconds
+const HEARTBEAT_INTERVAL = parseInt(process.env.HEARTBEAT_INTERVAL) || 1000;
+const READING_INTERVAL_MIN = parseInt(process.env.READING_INTERVAL_MIN) || 2000;
+const READING_INTERVAL_MAX = parseInt(process.env.READING_INTERVAL_MAX) || 5000;
 
-// Factory configuration from environment
-const factoryId = process.env.FACTORY_ID || 'factory-1';
-const mqttBrokerUrl = process.env.MQTT_BROKER_URL || config.mqtt.brokerUrl;
-const heartbeatIntervalMs = parseInt(process.env.HEARTBEAT_INTERVAL_MS) || config.heartbeat.intervalMs;
-const simulateFailures = process.env.SIMULATE_FAILURES === 'true';
-const failureProbability = parseFloat(process.env.FAILURE_PROBABILITY) || config.simulation.failureProbability;
-
-// State
+// MQTT setup
 let mqttClient = null;
-let heartbeatInterval = null;
-let isInFailureState = false;
-let isDegraded = false;
-let failureEndTime = null;
-let heartbeatCount = 0;
-
-// Statistics
-const stats = {
-    heartbeatsSent: 0,
-    failures: 0,
-    reconnects: 0,
-    errors: 0
-};
 
 /**
- * Generate random number in range
+ * Sensor class - handles heartbeats and readings
  */
-function randomInRange(min, max) {
-    return Math.random() * (max - min) + min;
-}
-
-/**
- * Generate simulated metrics
- */
-function generateMetrics() {
-    const metricsConfig = config.metrics;
-    
-    let cpuUsage, memoryUsage, latencyMs, errorCount;
-    
-    if (isInFailureState) {
-        // During failure, don't send metrics (factory is "down")
-        return null;
-    } else if (isDegraded) {
-        // Degraded state - elevated metrics
-        cpuUsage = randomInRange(metricsConfig.cpu.max, metricsConfig.cpu.spike);
-        memoryUsage = randomInRange(metricsConfig.memory.max, metricsConfig.memory.spike);
-        latencyMs = randomInRange(metricsConfig.latency.max, metricsConfig.latency.spike);
-        errorCount = Math.floor(randomInRange(metricsConfig.errors.degraded, metricsConfig.errors.spike));
-    } else {
-        // Normal state
-        cpuUsage = randomInRange(metricsConfig.cpu.min, metricsConfig.cpu.max);
-        memoryUsage = randomInRange(metricsConfig.memory.min, metricsConfig.memory.max);
-        latencyMs = randomInRange(metricsConfig.latency.min, metricsConfig.latency.max);
-        errorCount = metricsConfig.errors.normal;
+class Sensor {
+    constructor(sensorId, tier, mqttClient, factoryId) {
+        this.sensorId = sensorId;
+        this.tier = tier;
+        this.mqttClient = mqttClient;
+        this.factoryId = factoryId;
+        this.heartbeatInterval = null;
+        this.isRunning = false;
+        this.isFailed = false;
     }
-    
-    return {
-        cpu_usage: parseFloat(cpuUsage.toFixed(2)),
-        memory_usage: parseFloat(memoryUsage.toFixed(2)),
-        latency_ms: parseFloat(latencyMs.toFixed(2)),
-        error_count: errorCount
-    };
-}
 
-/**
- * Create heartbeat message
- */
-function createHeartbeatMessage() {
-    const metrics = generateMetrics();
-    
-    if (metrics === null) {
-        return null;  // Factory is in failure state
-    }
-    
-    return {
-        factory_id: factoryId,
-        timestamp: new Date().toISOString(),
-        sequence: ++heartbeatCount,
-        metrics: metrics,
-        status: isDegraded ? 'DEGRADED' : 'UP'
-    };
-}
+    /**
+     * Start sending heartbeats
+     */
+    startHeartbeat() {
+        this.isRunning = true;
+        this.heartbeatInterval = setInterval(() => {
+            if (!this.isRunning || this.isFailed) return;
 
-/**
- * Check and update failure state
- */
-function updateFailureState() {
-    const now = Date.now();
-    
-    // Check if we should exit failure state
-    if (isInFailureState && failureEndTime && now >= failureEndTime) {
-        isInFailureState = false;
-        failureEndTime = null;
-        logger.info(`Factory ${factoryId} recovered from failure`);
+            const heartbeatData = {
+                sensorId: this.sensorId,
+                tier: this.tier,
+                factoryId: this.factoryId,
+                timestamp: new Date().toISOString(),
+                status: 'active'
+            };
+
+            const topic = `factory/${this.factoryId}/heartbeat`;
+
+            this.mqttClient.publish(topic, JSON.stringify(heartbeatData), { qos: 1 }, (err) => {
+                if (err) {
+                    console.error(`Error sending heartbeat from ${this.sensorId}:`, err.message);
+                } else {
+                    console.log(`[${heartbeatData.timestamp}] Heartbeat from Sensor ${this.sensorId} -> MQTT`);
+                }
+            });
+        }, HEARTBEAT_INTERVAL + Math.random() * 1000); // Add jitter
     }
-    
-    // Check if we should enter failure state
-    if (!isInFailureState && simulateFailures) {
-        if (Math.random() < failureProbability) {
-            isInFailureState = true;
-            failureEndTime = now + config.simulation.failureDurationMs;
-            stats.failures++;
-            logger.warn(`Factory ${factoryId} entering failure state for ${config.simulation.failureDurationMs}ms`);
+
+    /**
+     * Stop sending heartbeats
+     */
+    stopHeartbeat() {
+        this.isRunning = false;
+        if (this.heartbeatInterval) {
+            clearInterval(this.heartbeatInterval);
+            this.heartbeatInterval = null;
         }
     }
-    
-    // Check for degraded state
-    if (!isInFailureState && config.simulation.simulateDegraded) {
-        if (Math.random() < config.simulation.degradedProbability) {
-            isDegraded = !isDegraded;
-            logger.info(`Factory ${factoryId} degraded state: ${isDegraded}`);
-        }
-    }
-}
 
-/**
- * Send heartbeat to MQTT
- */
-function sendHeartbeat() {
-    updateFailureState();
-    
-    const message = createHeartbeatMessage();
-    
-    if (message === null) {
-        logger.debug(`Factory ${factoryId} in failure state, skipping heartbeat`);
-        return;
+    /**
+     * Generate sensor reading (0-100)
+     * Marks sensor as failed if reading < 10
+     */
+    generateReading() {
+        if (this.isFailed) {
+            return -1; // Failed sensor returns -1
+        }
+
+        const reading = Math.floor(Math.random() * 101);
+
+        // Detect failure if reading is below threshold
+        if (reading < 10) {
+            this.markAsFailed(reading);
+            return reading;
+        }
+
+        return reading;
     }
-    
-    const topic = `${config.mqtt.topicPrefix}/${factoryId}/${config.mqtt.topicSuffix}`;
-    
-    try {
-        mqttClient.publish(topic, JSON.stringify(message), { qos: config.mqtt.qos }, (err) => {
+
+    /**
+     * Mark sensor as failed and notify
+     */
+    markAsFailed(failedReading) {
+        if (this.isFailed) return; // Already marked
+
+        this.isFailed = true;
+        this.isRunning = false;
+
+        // Stop heartbeat interval
+        this.stopHeartbeat();
+
+        console.error(`❌ SENSOR FAILURE: ${this.sensorId} - Reading: ${failedReading} (below threshold < 10)`);
+
+        // Publish failure notification
+        const failureData = {
+            factoryId: this.factoryId,
+            sensorId: this.sensorId,
+            tier: this.tier,
+            reading: failedReading,
+            timestamp: new Date().toISOString(),
+            reason: 'Reading below threshold (< 10)'
+        };
+
+        const topic = `factory/${this.factoryId}/sensor-failure`;
+        this.mqttClient.publish(topic, JSON.stringify(failureData), { qos: 1 }, (err) => {
             if (err) {
-                logger.error(`Failed to publish heartbeat`, { error: err.message });
-                stats.errors++;
+                console.error(`Error publishing sensor failure:`, err.message);
             } else {
-                stats.heartbeatsSent++;
-                logger.debug(`Heartbeat sent`, { 
-                    factoryId, 
-                    sequence: message.sequence,
-                    status: message.status
+                console.log(`🚨 Published sensor failure notification for ${this.sensorId}`);
+            }
+        });
+    }
+
+    /**
+     * Recover sensor (used after factory restart)
+     */
+    recover() {
+        this.isFailed = false;
+        this.isRunning = true;
+        console.log(`✅ Sensor ${this.sensorId} recovered`);
+    }
+}
+
+/**
+ * Factory class - manages sensors and processes production orders
+ */
+class Factory {
+    constructor(factoryId, mqttClient) {
+        this.factoryId = factoryId;
+        this.mqttClient = mqttClient;
+        this.sensors = new Map();
+        this.isProcessing = false;
+        this.lastConfigHash = null;
+    }
+
+    /**
+     * Add a sensor to the factory
+     */
+    addSensor(sensor) {
+        this.sensors.set(sensor.sensorId, sensor);
+    }
+
+    /**
+     * Get a sensor by ID
+     */
+    getSensor(sensorId) {
+        return this.sensors.get(sensorId);
+    }
+
+    /**
+     * Process a single soda production item
+     */
+    async processSodaItem(sodaName, number, sensorId, completedOffset = 0) {
+        let sensor = this.getSensor(sensorId);
+
+        // If assigned sensor is not found or failed, find first available healthy sensor
+        if (!sensor || sensor.isFailed) {
+            console.warn(`⚠️  Assigned sensor ${sensorId} is ${!sensor ? 'not found' : 'FAILED'} - finding replacement...`);
+
+            // Find first healthy sensor
+            for (const [id, s] of this.sensors.entries()) {
+                if (!s.isFailed) {
+                    sensor = s;
+                    sensorId = id;
+                    console.log(`✅ Using replacement sensor ${sensorId} instead`);
+                    break;
+                }
+            }
+
+            if (!sensor || sensor.isFailed) {
+                console.error(`❌ No healthy sensors available in Factory ${this.factoryId}`);
+                return;
+            }
+        }
+
+        const totalTarget = completedOffset + number;
+        console.log(`\n📊 Factory ${this.factoryId} - Processing: ${sodaName}`);
+        console.log(`   Sensor: ${sensorId} (Tier ${sensor.tier})`);
+        console.log(`   Remaining: ${number} (Progress: ${completedOffset}/${totalTarget})`);
+
+        for (let count = 1; count <= number; count++) {
+            const reading = sensor.generateReading();
+
+            // Check if sensor failed during reading
+            if (sensor.isFailed) {
+                console.error(`   ❌ Sensor ${sensorId} FAILED during production at ${count}/${number}`);
+                break; // Stop processing this order
+            }
+
+            const timestamp = new Date().toISOString();
+
+            const absoluteCount = completedOffset + count;
+            const readingData = {
+                factoryId: this.factoryId,
+                sensorId: sensorId,
+                tier: sensor.tier,
+                sodaName: sodaName,
+                reading: reading,
+                count: absoluteCount,
+                total: totalTarget,
+                timestamp: timestamp
+            };
+
+            const topic = `factory/${this.factoryId}/readings`;
+
+            await new Promise((resolve, reject) => {
+                this.mqttClient.publish(topic, JSON.stringify(readingData), { qos: 1 }, (err) => {
+                    if (err) {
+                        console.error(`   Error sending reading to MQTT:`, err.message);
+                        reject(err);
+                    } else {
+                        console.log(`   Factory ${this.factoryId} [${timestamp}] Reading #${absoluteCount}/${totalTarget}: ${reading} -> MQTT`);
+                        resolve();
+                    }
                 });
+            });
+
+            // Wait before next reading (except for last one)
+            if (count < number) {
+                const delay = READING_INTERVAL_MIN + Math.random() * (READING_INTERVAL_MAX - READING_INTERVAL_MIN);
+                await new Promise(resolve => setTimeout(resolve, delay));
+            }
+        }
+
+        console.log(`   ✅ Factory ${this.factoryId} completed ${sodaName}`);
+    }
+
+    /**
+     * Load and process configuration file
+     */
+    async loadAndProcessConfig(configFile) {
+        try {
+            // Check if config file exists
+            if (!fs.existsSync(configFile)) {
+                // Config file doesn't exist yet - this is normal, just wait
+                return;
+            }
+
+            // Read and hash config to detect changes
+            const configContent = fs.readFileSync(configFile, 'utf8');
+            const configHash = require('crypto').createHash('md5').update(configContent).digest('hex');
+
+            // Skip if same config and already processing
+            if (this.lastConfigHash === configHash) {
+                console.log(`   No new work for Factory ${this.factoryId}`);
+                return;
+            }
+
+            const configData = JSON.parse(configContent);
+
+            // Get configuration for this specific factory
+            const factoryConfig = configData[this.factoryId];
+
+            if (!factoryConfig || !Array.isArray(factoryConfig) || factoryConfig.length === 0) {
+                console.log(`   No work assigned to Factory ${this.factoryId}`);
+                this.lastConfigHash = configHash;
+                return;
+            }
+
+            console.log(`\n${'='.repeat(60)}`);
+            console.log(`Factory ${this.factoryId} - Processing Active Order`);
+            console.log(`Items in queue: ${factoryConfig.length}`);
+            console.log(`${'='.repeat(60)}`);
+
+            this.isProcessing = true;
+            this.lastConfigHash = configHash;
+
+            // Process ONLY the first item (active order) - queue system
+            const activeOrder = factoryConfig[0];
+            const { sodaName, number, sensorID, completedOffset } = activeOrder;
+
+            if (!sodaName || number == null || !sensorID) {
+                console.warn(`⚠️  Invalid active order config:`, activeOrder);
+            } else {
+                console.log(`📦 Active Order: ${sodaName} x${number} using ${sensorID}`);
+                await this.processSodaItem(sodaName, number, sensorID, completedOffset || 0);
+            }
+
+            console.log(`\n${'='.repeat(60)}`);
+            console.log(`Factory ${this.factoryId} - Active Order Complete`);
+            console.log(`${'='.repeat(60)}\n`);
+
+            this.isProcessing = false;
+
+        } catch (error) {
+            this.isProcessing = false;
+
+            if (error.code === 'ENOENT') {
+                // File doesn't exist - silently continue
+                return;
+            } else if (error instanceof SyntaxError) {
+                console.error(`❌ Error: Invalid JSON in file '${configFile}'`);
+            } else {
+                console.error(`❌ Error processing configuration:`, error.message);
+            }
+        }
+    }
+
+    /**
+     * Start heartbeats for all sensors
+     */
+    startAllHeartbeats() {
+        for (const sensor of this.sensors.values()) {
+            sensor.startHeartbeat();
+        }
+    }
+
+    /**
+     * Stop heartbeats for all sensors
+     */
+    stopAllHeartbeats() {
+        for (const sensor of this.sensors.values()) {
+            sensor.stopHeartbeat();
+        }
+    }
+
+    /**
+     * Get all healthy (non-failed) sensors
+     */
+    getHealthySensors() {
+        return Array.from(this.sensors.values()).filter(sensor => !sensor.isFailed);
+    }
+
+    /**
+     * Get all failed sensors
+     */
+    getFailedSensors() {
+        return Array.from(this.sensors.values()).filter(sensor => sensor.isFailed);
+    }
+
+    /**
+     * Check if factory has any healthy sensors
+     */
+    hasHealthySensors() {
+        return this.getHealthySensors().length > 0;
+    }
+
+    /**
+     * Restart factory - recovers all sensors
+     */
+    restartFactory() {
+        console.log(`\n${'='.repeat(60)}`);
+        console.log(`🔄 RESTARTING FACTORY ${this.factoryId}`);
+        console.log(`${'='.repeat(60)}`);
+
+        const failedSensors = this.getFailedSensors();
+        console.log(`Recovering ${failedSensors.length} failed sensors...`);
+
+        // Recover all failed sensors
+        for (const sensor of failedSensors) {
+            sensor.recover();
+        }
+
+        // Restart heartbeats
+        this.startAllHeartbeats();
+
+        console.log(`✅ Factory ${this.factoryId} restarted successfully`);
+        console.log(`${'='.repeat(60)}\n`);
+
+        // Publish restart notification
+        const restartData = {
+            factoryId: this.factoryId,
+            timestamp: new Date().toISOString(),
+            recoveredSensors: failedSensors.map(s => s.sensorId),
+            totalSensors: this.sensors.size
+        };
+
+        const topic = `factory/${this.factoryId}/restart`;
+        this.mqttClient.publish(topic, JSON.stringify(restartData), { qos: 1 }, (err) => {
+            if (err) {
+                console.error(`Error publishing restart notification:`, err.message);
+            } else {
+                console.log(`📢 Published factory restart notification`);
             }
         });
-    } catch (error) {
-        logger.error(`Error sending heartbeat`, { error: error.message });
-        stats.errors++;
     }
 }
 
 /**
- * Connect to MQTT broker
+ * Create factories with sensors
  */
-function connectMqtt() {
-    return new Promise((resolve, reject) => {
-        logger.info(`Connecting to MQTT broker`, { 
-            url: mqttBrokerUrl, 
-            factoryId 
-        });
-        
-        mqttClient = mqtt.connect(mqttBrokerUrl, {
-            clientId: `${factoryId}-${Date.now()}`,
-            reconnectPeriod: config.mqtt.reconnectPeriod,
-            clean: true
-        });
-        
-        mqttClient.on('connect', () => {
-            logger.info(`Connected to MQTT broker`, { factoryId });
-            resolve();
-        });
-        
-        mqttClient.on('error', (error) => {
-            logger.error(`MQTT error`, { error: error.message, factoryId });
-            stats.errors++;
-        });
-        
-        mqttClient.on('reconnect', () => {
-            logger.info(`Reconnecting to MQTT broker...`, { factoryId });
-            stats.reconnects++;
-        });
-        
-        mqttClient.on('close', () => {
-            logger.warn(`MQTT connection closed`, { factoryId });
-        });
-        
-        mqttClient.on('offline', () => {
-            logger.warn(`MQTT client offline`, { factoryId });
-        });
-        
-        // Timeout for initial connection
-        setTimeout(() => {
-            if (!mqttClient.connected) {
-                reject(new Error('MQTT connection timeout'));
-            }
-        }, 10000);
-    });
-}
+function createFactory(factoryId, mqttClient) {
+    const factory = new Factory(factoryId, mqttClient);
 
-/**
- * Start heartbeat sending
- */
-function startHeartbeats() {
-    logger.info(`Starting heartbeats`, { 
-        factoryId, 
-        intervalMs: heartbeatIntervalMs,
-        simulateFailures,
-        failureProbability
-    });
-    
-    // Send first heartbeat immediately
-    sendHeartbeat();
-    
-    // Add jitter to interval
-    const jitteredInterval = heartbeatIntervalMs + randomInRange(-config.heartbeat.jitterMs, config.heartbeat.jitterMs);
-    
-    heartbeatInterval = setInterval(() => {
-        sendHeartbeat();
-    }, jitteredInterval);
-}
+    // Predefined sensor tiers
+    const sensorTiers = ['1.1', '1.2', '2.1', '2.2', '3.1'];
 
-/**
- * Stop heartbeats
- */
-function stopHeartbeats() {
-    if (heartbeatInterval) {
-        clearInterval(heartbeatInterval);
-        heartbeatInterval = null;
+    // Add 3-5 random sensors
+    const numSensors = 3 + Math.floor(Math.random() * 3);
+    for (let j = 1; j <= numSensors; j++) {
+        const sensorId = `S${factoryId.replace('F', '')}-${j}`;
+        const tier = sensorTiers[Math.floor(Math.random() * sensorTiers.length)];
+        const sensor = new Sensor(sensorId, tier, mqttClient, factoryId);
+        factory.addSensor(sensor);
     }
+
+    const sensorIds = Array.from(factory.sensors.keys());
+    console.log(`✅ Created Factory ${factoryId} with sensors: ${sensorIds.join(', ')}`);
+
+    return factory;
 }
 
 /**
- * Print statistics
- */
-function printStats() {
-    logger.info(`Factory simulator statistics`, {
-        factoryId,
-        heartbeatsSent: stats.heartbeatsSent,
-        failures: stats.failures,
-        reconnects: stats.reconnects,
-        errors: stats.errors,
-        isInFailureState,
-        isDegraded
-    });
-}
-
-/**
- * Graceful shutdown
- */
-function shutdown() {
-    logger.info(`Shutting down factory simulator`, { factoryId });
-    
-    stopHeartbeats();
-    
-    if (mqttClient) {
-        mqttClient.end(true);
-    }
-    
-    printStats();
-    logger.info(`Factory simulator shutdown complete`, { factoryId });
-    process.exit(0);
-}
-
-/**
- * Main entry point
+ * Main function
  */
 async function main() {
-    logger.info(`Starting Factory Simulator`, {
-        factoryId,
-        mqttBroker: mqttBrokerUrl,
-        heartbeatInterval: heartbeatIntervalMs,
-        simulateFailures,
-        failureProbability
-    });
-    
+    console.log('🏭 Factory System Starting...\n');
+
     try {
-        await connectMqtt();
-        startHeartbeats();
-        
-        // Print stats every 30 seconds
-        setInterval(printStats, 30000);
-        
-        logger.info(`Factory simulator is running`, { factoryId });
-    } catch (error) {
-        logger.error(`Failed to start factory simulator`, { 
-            error: error.message, 
-            factoryId 
+        // Connect to MQTT
+        mqttClient = mqtt.connect(MQTT_BROKER, {
+            clientId: `factory-${FACTORY_ID}-${Date.now()}`,
+            clean: true,
+            reconnectPeriod: 5000
         });
-        
-        // Retry connection after delay
-        setTimeout(main, 5000);
+
+        await new Promise((resolve, reject) => {
+            mqttClient.on('connect', () => {
+                console.log(`✅ Connected to MQTT broker at ${MQTT_BROKER}\n`);
+                resolve();
+            });
+
+            mqttClient.on('error', (error) => {
+                console.error('MQTT connection error:', error.message);
+                reject(error);
+            });
+
+            setTimeout(() => reject(new Error('MQTT connection timeout')), 10000);
+        });
+
+        // Create factory
+        const factory = createFactory(FACTORY_ID, mqttClient);
+
+        console.log(`\n${'='.repeat(60)}`);
+        console.log(`Factory ${FACTORY_ID} initialized - RUNNING CONTINUOUSLY`);
+        console.log(`Config polling interval: ${CONFIG_POLL_INTERVAL}ms`);
+        console.log(`${'='.repeat(60)}\n`);
+
+        console.log('📡 Publishing to MQTT topics:');
+        console.log(`   - factory/${FACTORY_ID}/heartbeat (bridged to SENSOR_HEARTBEAT)`);
+        console.log(`   - factory/${FACTORY_ID}/readings (bridged to SENSOR_READINGS)\n`);
+
+        // Start heartbeats (continuous)
+        factory.startAllHeartbeats();
+        console.log('💓 Heartbeats started for all sensors\n');
+
+        // Continuous polling loop
+        console.log('🔄 Starting configuration polling...\n');
+
+        let isShuttingDown = false;
+
+        const pollConfig = async () => {
+            if (isShuttingDown) return;
+
+            // Check if factory needs restart (no healthy sensors)
+            if (!factory.hasHealthySensors() && factory.getFailedSensors().length > 0) {
+                console.warn(`⚠️  No healthy sensors available - triggering factory restart`);
+                factory.restartFactory();
+            }
+
+            console.log(`[${new Date().toISOString()}] Checking for new work...`);
+            await factory.loadAndProcessConfig(CONFIG_FILE);
+
+            if (!isShuttingDown) {
+                setTimeout(pollConfig, CONFIG_POLL_INTERVAL);
+            }
+        };
+
+        // Start polling
+        pollConfig();
+
+        // Keep process alive indefinitely
+        // The pollConfig function will reschedule itself via setTimeout
+        await new Promise(() => { }); // Never resolves, keeps process running
+
+    } catch (error) {
+        console.error('❌ Fatal error:', error);
+        process.exit(1);
     }
 }
 
-// Handle shutdown signals
-process.on('SIGTERM', shutdown);
-process.on('SIGINT', shutdown);
+// Handle graceful shutdown
+let isShuttingDown = false;
 
-// Handle uncaught errors
-process.on('uncaughtException', (error) => {
-    logger.error(`Uncaught exception`, { 
-        error: error.message, 
-        stack: error.stack, 
-        factoryId 
-    });
-    shutdown();
+process.on('SIGINT', () => {
+    if (isShuttingDown) return;
+    isShuttingDown = true;
+
+    console.log('\n\n🛑 Shutting down gracefully...');
+    if (mqttClient) {
+        mqttClient.end();
+    }
+    process.exit(0);
 });
 
-process.on('unhandledRejection', (reason, promise) => {
-    logger.error(`Unhandled rejection`, { reason, factoryId });
+process.on('SIGTERM', () => {
+    if (isShuttingDown) return;
+    isShuttingDown = true;
+
+    console.log('\n\n🛑 Shutting down gracefully...');
+    if (mqttClient) {
+        mqttClient.end();
+    }
+    process.exit(0);
 });
 
-// Start the simulator
-main();
+// Run
+main().catch(console.error);

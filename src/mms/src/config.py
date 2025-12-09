@@ -17,6 +17,9 @@ class Config:
     kafka_heartbeat_topic: str = 'factory.heartbeat'
     kafka_consumer_group: str = 'mms-consumer-group'
     
+    # MQTT settings
+    mqtt_broker: str = os.getenv('MQTT_BROKER', 'mqtt://localhost:1883')
+    
     # PMS gRPC settings
     pms_grpc_host: str = os.getenv('PMS_GRPC_HOST', 'localhost')
     pms_grpc_port: int = int(os.getenv('PMS_GRPC_PORT', '50051'))

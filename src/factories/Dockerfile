@@ -2,13 +2,13 @@ FROM node:18-alpine
 
 WORKDIR /app
 
-# Copy package files
+# Copy package files from factories directory
 COPY factories/package*.json ./
 
 # Install dependencies
 RUN npm install --omit=dev
 
-# Copy source code
+# Copy source code from factories directory
 COPY factories/src/ ./src/
 
 # Health check

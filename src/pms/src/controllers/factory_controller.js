@@ -1,8 +1,10 @@
 const express = require('express');
 const factoryService = require('../services/factory_service');
 const schedulingService = require('../services/scheduling_service');
+const configManager = require('../services/config_manager');
 const exceptionHandler = require('../services/exception_handler');
 const logger = require('../utils/logger');
+const db = require('../db/database');
 
 const router = express.Router();
 
@@ -94,6 +96,85 @@ router.get('/all/capacities', exceptionHandler.asyncHandler(async (req, res) => 
         success: true,
         data: capacities,
         count: capacities.length
+    });
+}));
+
+/**
+ * POST /factories/:id/replace-sensor - Replace a failed sensor
+ */
+router.post('/:id/replace-sensor', exceptionHandler.asyncHandler(async (req, res) => {
+    const { id: factoryId } = req.params;
+    const { failedSensorId, replacementSensorId } = req.body;
+
+    if (!failedSensorId || !replacementSensorId) {
+        return res.status(400).json({
+            success: false,
+            error: 'Both failedSensorId and replacementSensorId are required'
+        });
+    }
+
+    const result = await configManager.replaceSensor(factoryId, failedSensorId, replacementSensorId);
+
+    logger.info('Sensor replaced via API', {
+        factoryId,
+        failedSensorId,
+        replacementSensorId,
+        rowsUpdated: result.rowsUpdated
+    });
+
+    res.json({
+        success: true,
+        data: result
+    });
+}));
+
+/**
+ * GET /factories/:id/assignments - Get factory assignments with queue
+ */
+router.get('/:id/assignments', exceptionHandler.asyncHandler(async (req, res) => {
+    const { id } = req.params;
+
+    const result = await db.query(`
+        WITH ranked_assignments AS (
+            SELECT 
+                fa.id as assignment_id,
+                fa.order_id,
+                fa.factory_id,
+                fa.product_type,
+                fa.assigned_quantity,
+                fa.completed_quantity,
+                fa.sensor_id,
+                fa.status,
+                fa.assigned_at,
+                o.order_id as order_uuid,
+                o.deadline,
+                o.priority,
+                ROW_NUMBER() OVER (PARTITION BY fa.factory_id ORDER BY fa.assigned_at) as queue_position
+            FROM factory_assignments fa
+            JOIN orders o ON fa.order_id = o.id
+            WHERE fa.factory_id = $1 AND fa.status IN ('assigned', 'in_progress')
+        )
+        SELECT * FROM ranked_assignments
+        ORDER BY queue_position
+    `, [id]);
+
+    res.json({
+        success: true,
+        data: result.rows
+    });
+}));
+
+/**
+ * GET /factories/:id/config - Get factory configuration
+ */
+router.get('/:id/config', exceptionHandler.asyncHandler(async (req, res) => {
+    const { id } = req.params;
+
+    const config = await configManager.generateFactoryConfig();
+
+    res.json({
+        success: true,
+        data: config[id] || []
     });
 }));
 

@@ -15,7 +15,7 @@ class SchedulingService {
         const orderId = uuidv4();
 
         return db.withTransaction(async (client) => {
-            // Create the order
+            // Create the order in pending status
             const orderResult = await client.query(
                 `INSERT INTO orders (order_id, product_type, quantity, deadline, priority, status)
                  VALUES ($1, $2, $3, $4, $5, 'pending')
@@ -24,67 +24,77 @@ class SchedulingService {
             );
             const order = orderResult.rows[0];
 
-            // Find best available factory
-            const factory = await this.findBestFactory(client);
-            
-            if (!factory) {
-                // No factory available, order stays pending
-                logger.warn('No factory available for order', { orderId: order.order_id });
-                return { order, assignment: null };
-            }
-
-            // Create assignment
-            const assignmentResult = await client.query(
-                `INSERT INTO factory_assignments (order_id, factory_id, status)
-                 VALUES ($1, $2, 'assigned')
-                 RETURNING *`,
-                [order.id, factory.id]
-            );
-
-            // Update factory load
-            await client.query(
-                `UPDATE factories SET current_load = current_load + 1 WHERE id = $1`,
-                [factory.id]
-            );
-
-            // Update order status
-            await client.query(
-                `UPDATE orders SET status = 'assigned' WHERE id = $1`,
-                [order.id]
-            );
-
-            // Log the event
-            await client.query(
-                `INSERT INTO production_events (event_type, factory_id, order_id, details)
-                 VALUES ('ORDER_ASSIGNED', $1, $2, $3)`,
-                [factory.id, order.id, JSON.stringify({ productType, quantity })]
-            );
-
-            logger.info('Order created and assigned', { 
-                orderId: order.order_id, 
-                factoryId: factory.id 
+            logger.info('Order created', {
+                orderId: order.order_id,
+                productType: productType
             });
 
-            return { 
-                order: { ...order, status: 'assigned' }, 
-                assignment: assignmentResult.rows[0] 
+            return {
+                order: order,
+                assignment: null
             };
         });
     }
 
     /**
      * Find the best available factory for an order
+     * Prioritizes factories with lower current load, then more healthy sensors
      * @param {Object} client - Database client
      * @returns {Promise<Object>} Best factory or null
      */
     async findBestFactory(client) {
-        const result = await client.query(
-            `SELECT * FROM factories 
-             WHERE status = 'UP' AND current_load < capacity 
-             ORDER BY (capacity - current_load) DESC
-             LIMIT 1`
-        );
-        return result.rows[0];
+        try {
+            // Query MMS for sensor health data
+            const MMS_API = process.env.MMS_API || 'http://mms:8000';
+            const factoriesResponse = await fetch(`${MMS_API}/factories`);
+            const factoriesData = await factoriesResponse.json();
+
+            // Build a map of factory_id -> healthy sensor count
+            const healthySensorCounts = {};
+            if (factoriesData.success && factoriesData.data) {
+                factoriesData.data.forEach(factory => {
+                    const healthyCount = factory.healthy_sensors ? factory.healthy_sensors.length : 0;
+                    healthySensorCounts[factory.factory_id] = healthyCount;
+                });
+            }
+
+            // Get all UP factories
+            const result = await client.query(
+                `SELECT * FROM factories 
+                 WHERE status = 'UP'
+                 ORDER BY current_load ASC`
+            );
+
+            if (result.rows.length === 0) {
+                return null;
+            }
+
+            // Sort by current_load (ascending), then by healthy sensor count (descending)
+            const sortedFactories = result.rows.sort((a, b) => {
+                if (a.current_load !== b.current_load) {
+                    return a.current_load - b.current_load; // Lower load = better
+                }
+                
+                const healthyA = healthySensorCounts[a.id] || 0;
+                const healthyB = healthySensorCounts[b.id] || 0;
+                return healthyB - healthyA; // More healthy sensors = better
+            });
+
+            return sortedFactories[0];
+        } catch (error) {
+            logger.warn('Failed to get sensor health data from MMS, falling back to load-based selection', {
+                error: error.message
+            });
+            
+            // Fallback to simple load-based selection if MMS is unavailable
+            const result = await client.query(
+                `SELECT * FROM factories 
+                 WHERE status = 'UP'
+                 ORDER BY current_load ASC
+                 LIMIT 1`
+            );
+            return result.rows[0];
+        }
     }
 
     /**
@@ -140,8 +150,8 @@ class SchedulingService {
 
                         if (!targetFactory) {
                             failed++;
-                            logger.warn('No target factory available for rescheduling', { 
-                                orderId: assignment.order_id 
+                            logger.warn('No target factory available for rescheduling', {
+                                orderId: assignment.order_id
                             });
                             continue;
                         }
@@ -187,8 +197,8 @@ class SchedulingService {
                 });
             } catch (error) {
                 lastError = error;
-                logger.warn(`Reschedule attempt ${attempt}/${maxRetries} failed`, { 
-                    error: error.message 
+                logger.warn(`Reschedule attempt ${attempt}/${maxRetries} failed`, {
+                    error: error.message
                 });
                 if (attempt < maxRetries) {
                     await new Promise(resolve => setTimeout(resolve, Math.pow(2, attempt) * 100));
@@ -307,9 +317,9 @@ class SchedulingService {
                 }
             } catch (error) {
                 failed++;
-                logger.error('Failed to assign pending order', { 
-                    orderId: order.order_id, 
-                    error: error.message 
+                logger.error('Failed to assign pending order', {
+                    orderId: order.order_id,
+                    error: error.message
                 });
             }
         }

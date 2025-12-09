@@ -15,7 +15,7 @@ services:
       - postgres_data:/var/lib/postgresql/data
       - ./pms/src/db/init.sql:/docker-entrypoint-initdb.d/init.sql
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U pms_user -d production_db"]
+      test: [ "CMD-SHELL", "pg_isready -U pms_user -d production_db" ]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -72,7 +72,7 @@ services:
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
       KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
     healthcheck:
-      test: ["CMD", "kafka-topics", "--bootstrap-server", "kafka:29092", "--list"]
+      test: [ "CMD", "kafka-topics", "--bootstrap-server", "kafka:29092", "--list" ]
       interval: 10s
       timeout: 10s
       retries: 5
@@ -91,7 +91,7 @@ services:
       - mosquitto_data:/mosquitto/data
       - mosquitto_log:/mosquitto/log
     healthcheck:
-      test: ["CMD", "mosquitto_sub", "-t", "$$SYS/#", "-C", "1", "-i", "healthcheck", "-W", "3"]
+      test: [ "CMD", "mosquitto_sub", "-t", "$$SYS/#", "-C", "1", "-i", "healthcheck", "-W", "3" ]
       interval: 10s
       timeout: 10s
       retries: 3
@@ -109,6 +109,8 @@ services:
         condition: service_healthy
       kafka:
         condition: service_healthy
+      mosquitto:
+        condition: service_healthy
     ports:
       - "3000:3000"
       - "50051:50051"
@@ -122,10 +124,13 @@ services:
       POSTGRES_PASSWORD: pms_password
       POSTGRES_DB: production_db
       KAFKA_BROKERS: kafka:29092
+      MQTT_BROKER: mqtt://mosquitto:1883
+      FACTORY_CONFIG_PATH: /app/config/factory_config.json
     volumes:
       - ./proto:/app/proto:ro
+      - factory_config:/app/config
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
+      test: [ "CMD", "curl", "-f", "http://localhost:3000/health" ]
       interval: 10s
       timeout: 5s
       retries: 3
@@ -150,6 +155,7 @@ services:
     environment:
       MONGODB_URI: mongodb://mms_user:mms_password@mongodb:27017/monitoring_db?authSource=admin
       KAFKA_BROKERS: kafka:29092
+      MQTT_BROKER: mqtt://mosquitto:1883
       PMS_GRPC_HOST: pms
       PMS_GRPC_PORT: 50051
       HEARTBEAT_TIMEOUT_SECONDS: 3
@@ -157,7 +163,7 @@ services:
     volumes:
       - ./proto:/app/proto:ro
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      test: [ "CMD", "curl", "-f", "http://localhost:8000/health" ]
       interval: 10s
       timeout: 5s
       retries: 3
@@ -193,11 +199,14 @@ services:
       mosquitto:
         condition: service_healthy
     environment:
-      FACTORY_ID: factory-1
-      MQTT_BROKER_URL: mqtt://mosquitto:1883
+      FACTORY_ID: F1
+      MQTT_BROKER: mqtt://mosquitto:1883
+      CONFIG_FILE: /app/config/factory_config.json
       HEARTBEAT_INTERVAL_MS: 1000
       SIMULATE_FAILURES: "false"
       FAILURE_PROBABILITY: 0.0
+    volumes:
+      - factory_config:/app/config:ro
     networks:
       - industry4-network
 
@@ -210,11 +219,14 @@ services:
       mosquitto:
         condition: service_healthy
     environment:
-      FACTORY_ID: factory-2
-      MQTT_BROKER_URL: mqtt://mosquitto:1883
+      FACTORY_ID: F2
+      MQTT_BROKER: mqtt://mosquitto:1883
+      CONFIG_FILE: /app/config/factory_config.json
       HEARTBEAT_INTERVAL_MS: 1000
       SIMULATE_FAILURES: "false"
       FAILURE_PROBABILITY: 0.0
+    volumes:
+      - factory_config:/app/config:ro
     networks:
       - industry4-network
 
@@ -227,11 +239,14 @@ services:
       mosquitto:
         condition: service_healthy
     environment:
-      FACTORY_ID: factory-3
-      MQTT_BROKER_URL: mqtt://mosquitto:1883
+      FACTORY_ID: F3
+      MQTT_BROKER: mqtt://mosquitto:1883
+      CONFIG_FILE: /app/config/factory_config.json
       HEARTBEAT_INTERVAL_MS: 1000
       SIMULATE_FAILURES: "true"
       FAILURE_PROBABILITY: 0.1
+    volumes:
+      - factory_config:/app/config:ro
     networks:
       - industry4-network
 
@@ -244,11 +259,30 @@ services:
       mosquitto:
         condition: service_healthy
     environment:
-      FACTORY_ID: factory-4
-      MQTT_BROKER_URL: mqtt://mosquitto:1883
+      FACTORY_ID: F4
+      MQTT_BROKER: mqtt://mosquitto:1883
+      CONFIG_FILE: /app/config/factory_config.json
       HEARTBEAT_INTERVAL_MS: 1000
       SIMULATE_FAILURES: "true"
       FAILURE_PROBABILITY: 0.05
+    volumes:
+      - factory_config:/app/config:ro
+    networks:
+      - industry4-network
+
+  # Dashboard
+  dashboard:
+    build:
+      context: .
+      dockerfile: dashboard/Dockerfile
+    container_name: industry4-dashboard
+    depends_on:
+      pms:
+        condition: service_healthy
+    environment:
+      PMS_URL: http://pms:3000
+    ports:
+      - "8080:8080"
     networks:
       - industry4-network
 
@@ -257,6 +291,8 @@ volumes:
   mongodb_data:
   mosquitto_data:
   mosquitto_log:
+  factory_config:
+
 
 networks:
   industry4-network:

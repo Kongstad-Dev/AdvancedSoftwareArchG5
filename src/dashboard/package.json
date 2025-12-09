@@ -1,0 +1,20 @@
+{
+  "name": "factory-dashboard",
+  "version": "1.0.0",
+  "description": "Factory Management Dashboard - Web interface for monitoring factories, sensors, and production orders",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js"
+  },
+  "keywords": [
+    "factory",
+    "dashboard",
+    "monitoring"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "express": "^4.18.2"
+  }
+}

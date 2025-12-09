@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Factory Management Dashboard</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+
+<body>
+    <div class="container">
+        <!-- Header -->
+        <header class="header">
+            <h1>🏭 Factory Management Dashboard</h1>
+            <div class="header-actions">
+                <button id="refreshBtn" class="btn btn-secondary">🔄 Refresh</button>
+                <button id="createOrderBtn" class="btn btn-primary">➕ Create Order</button>
+                <button id="resetAllBtn" class="btn btn-danger">🗑️ Reset All</button>
+            </div>
+        </header>
+
+        <!-- Factory Selector -->
+        <section class="factory-selector">
+            <h2>Select Factory</h2>
+            <div id="factoryButtons" class="factory-buttons">
+                <!-- Factory buttons will be dynamically added here -->
+            </div>
+        </section>
+
+        <!-- Main Content -->
+        <div class="main-content">
+            <!-- Factory Overview -->
+            <section class="card factory-overview">
+                <h2>Factory Overview</h2>
+                <div id="factoryOverview">
+                    <p class="text-muted">Select a factory to view details</p>
+                </div>
+            </section>
+
+            <!-- Sensor Health -->
+            <section class="card sensor-health">
+                <h2>Sensor Health</h2>
+                <div id="sensorHealth">
+                    <p class="text-muted">No sensor data available</p>
+                </div>
+            </section>
+
+            <!-- Active Orders -->
+            <section class="card orders">
+                <h2>Active Orders</h2>
+                <div id="activeOrders">
+                    <p class="text-muted">No active orders</p>
+                </div>
+            </section>
+
+            <!-- Production Status -->
+            <section class="card production">
+                <h2>Production Status</h2>
+                <div id="productionStatus">
+                    <p class="text-muted">No production data</p>
+                </div>
+            </section>
+        </div>
+
+        <!-- All Orders Section -->
+        <section class="card all-orders">
+            <h2>All Orders</h2>
+            <div class="orders-filter">
+                <label>
+                    <input type="radio" name="orderFilter" value="all" checked> All
+                </label>
+                <label>
+                    <input type="radio" name="orderFilter" value="pending"> Pending
+                </label>
+                <label>
+                    <input type="radio" name="orderFilter" value="assigned"> Assigned
+                </label>
+                <label>
+                    <input type="radio" name="orderFilter" value="in_progress"> In Progress
+                </label>
+                <label>
+                    <input type="radio" name="orderFilter" value="completed"> Completed
+                </label>
+            </div>
+            <div id="allOrders">
+                <p class="text-muted">Loading orders...</p>
+            </div>
+        </section>
+    </div>
+
+    <!-- Create Order Modal -->
+    <div id="createOrderModal" class="modal">
+        <div class="modal-content">
+            <span class="close">&times;</span>
+            <h2>Create New Order</h2>
+            <form id="createOrderForm">
+                <div class="form-group">
+                    <label for="productType">Product Type</label>
+                    <input type="text" id="productType" name="productType" required
+                        placeholder="e.g., Coca-Cola, Pepsi, Sprite">
+                </div>
+                <div class="form-group">
+                    <label for="quantity">Quantity</label>
+                    <input type="number" id="quantity" name="quantity" min="1" required placeholder="e.g., 100">
+                </div>
+                <div class="form-group">
+                    <label for="deadline">Deadline</label>
+                    <input type="datetime-local" id="deadline" name="deadline" required>
+                </div>
+                <div class="form-group">
+                    <label for="priority">Priority</label>
+                    <select id="priority" name="priority">
+                        <option value="1">Low (1)</option>
+                        <option value="2" selected>Normal (2)</option>
+                        <option value="3">High (3)</option>
+                        <option value="4">Urgent (4)</option>
+                        <option value="5">Critical (5)</option>
+                    </select>
+                </div>
+                <div class="form-actions">
+                    <button type="button" class="btn btn-secondary" id="cancelOrderBtn">Cancel</button>
+                    <button type="submit" class="btn btn-primary">Create Order</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Toast Notifications -->
+    <div id="toastContainer" class="toast-container"></div>
+
+    <script src="app.js"></script>
+</body>
+
+</html>
