@@ -281,6 +281,7 @@ services:
         condition: service_healthy
     environment:
       PMS_URL: http://pms:3000
+      MMS_URL: http://mms:8000
     ports:
       - "8080:8080"
     networks:

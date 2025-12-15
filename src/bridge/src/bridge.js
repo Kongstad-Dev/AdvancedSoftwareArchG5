@@ -1,7 +1,12 @@
 /**
  * MQTT to Kafka Bridge
  * 
- * Subscribes to MQTT topic factory/+/heartbeat and publishes to Kafka topic factory.heartbeat
+ * Subscribes to all factory MQTT topics and publishes to corresponding Kafka topics:
+ * - factory/+/heartbeat -> factory.heartbeat
+ * - factory/+/readings -> factory.readings
+ * - factory/+/sensor-failure -> factory.sensor-failure
+ * - factory/+/sensor-at-risk -> factory.sensor-at-risk
+ * - factory/+/restart -> factory.restart
  */
 
 const mqtt = require('mqtt');
@@ -26,17 +31,24 @@ const logger = winston.createLogger({
     ]
 });
 
+// Topic mapping: MQTT pattern -> Kafka topic
+const TOPIC_MAPPINGS = [
+    { mqtt: 'factory/+/heartbeat', kafka: 'factory.heartbeat' },
+    { mqtt: 'factory/+/readings', kafka: 'factory.readings' },
+    { mqtt: 'factory/+/sensor-failure', kafka: 'factory.sensor-failure' },
+    { mqtt: 'factory/+/sensor-at-risk', kafka: 'factory.sensor-at-risk' },
+    { mqtt: 'factory/+/restart', kafka: 'factory.restart' }
+];
+
 // Configuration
 const config = {
     mqtt: {
         brokerUrl: process.env.MQTT_BROKER_URL || 'mqtt://localhost:1883',
-        topic: process.env.MQTT_TOPIC || 'factory/+/heartbeat',
         clientId: `bridge-${Date.now()}`,
         reconnectPeriod: 5000
     },
     kafka: {
         brokers: (process.env.KAFKA_BROKERS || 'localhost:9092').split(','),
-        topic: process.env.KAFKA_TOPIC || 'factory.heartbeat',
         clientId: 'mqtt-kafka-bridge'
     }
 };
@@ -84,7 +96,7 @@ async function connectKafka() {
 function connectMqtt() {
     return new Promise((resolve, reject) => {
         logger.info('Connecting to MQTT broker', { url: config.mqtt.brokerUrl });
-        
+
         mqttClient = mqtt.connect(config.mqtt.brokerUrl, {
             clientId: config.mqtt.clientId,
             reconnectPeriod: config.mqtt.reconnectPeriod,
@@ -93,20 +105,31 @@ function connectMqtt() {
 
         mqttClient.on('connect', () => {
             logger.info('Connected to MQTT broker');
-            
-            // Subscribe to heartbeat topic
-            mqttClient.subscribe(config.mqtt.topic, { qos: 1 }, (err) => {
-                if (err) {
-                    logger.error('Failed to subscribe to MQTT topic', { 
-                        topic: config.mqtt.topic, 
-                        error: err.message 
+
+            // Subscribe to all factory topics
+            const subscribePromises = TOPIC_MAPPINGS.map(mapping => {
+                return new Promise((resolveSubscribe, rejectSubscribe) => {
+                    mqttClient.subscribe(mapping.mqtt, { qos: 1 }, (err) => {
+                        if (err) {
+                            logger.error('Failed to subscribe to MQTT topic', {
+                                topic: mapping.mqtt,
+                                error: err.message
+                            });
+                            rejectSubscribe(err);
+                        } else {
+                            logger.info('Subscribed to MQTT topic', {
+                                mqtt: mapping.mqtt,
+                                kafka: mapping.kafka
+                            });
+                            resolveSubscribe();
+                        }
                     });
-                    reject(err);
-                } else {
-                    logger.info('Subscribed to MQTT topic', { topic: config.mqtt.topic });
-                    resolve();
-                }
+                });
             });
+
+            Promise.all(subscribePromises)
+                .then(() => resolve())
+                .catch(err => reject(err));
         });
 
         mqttClient.on('error', (error) => {
@@ -136,12 +159,24 @@ async function handleMqttMessage(topic, message) {
         stats.messagesReceived++;
         stats.lastMessageTime = new Date();
 
-        // Extract factory ID from topic (factory/{factory_id}/heartbeat)
+        // Extract factory ID from topic (factory/{factory_id}/{message_type})
         const topicParts = topic.split('/');
         const factoryId = topicParts[1];
+        const messageType = topicParts[2];
 
-        if (!factoryId) {
-            logger.warn('Could not extract factory ID from topic', { topic });
+        if (!factoryId || !messageType) {
+            logger.warn('Could not extract factory ID or message type from topic', { topic });
+            return;
+        }
+
+        // Find corresponding Kafka topic
+        const mapping = TOPIC_MAPPINGS.find(m => {
+            const mqttPattern = m.mqtt.replace('+', factoryId);
+            return mqttPattern === topic;
+        });
+
+        if (!mapping) {
+            logger.warn('No Kafka topic mapping found for MQTT topic', { topic });
             return;
         }
 
@@ -164,18 +199,23 @@ async function handleMqttMessage(topic, message) {
             payload.timestamp = new Date().toISOString();
         }
 
-        // Forward to Kafka
-        await forwardToKafka(factoryId, payload);
+        // Add message type to payload
+        payload.message_type = messageType;
 
-        logger.debug('Message forwarded', { 
-            factoryId, 
-            topic: config.kafka.topic 
+        // Forward to Kafka
+        await forwardToKafka(mapping.kafka, factoryId, payload);
+
+        logger.debug('Message forwarded', {
+            factoryId,
+            messageType,
+            mqttTopic: topic,
+            kafkaTopic: mapping.kafka
         });
 
     } catch (error) {
-        logger.error('Error handling MQTT message', { 
+        logger.error('Error handling MQTT message', {
             error: error.message,
-            topic 
+            topic
         });
         stats.errors++;
     }
@@ -183,13 +223,14 @@ async function handleMqttMessage(topic, message) {
 
 /**
  * Forward message to Kafka
+ * @param {string} kafkaTopic - Kafka topic name
  * @param {string} factoryId - Factory ID (used as key)
  * @param {Object} payload - Message payload
  */
-async function forwardToKafka(factoryId, payload) {
+async function forwardToKafka(kafkaTopic, factoryId, payload) {
     try {
         await producer.send({
-            topic: config.kafka.topic,
+            topic: kafkaTopic,
             messages: [
                 {
                     key: factoryId,
@@ -200,12 +241,12 @@ async function forwardToKafka(factoryId, payload) {
         });
         stats.messagesForwarded++;
     } catch (error) {
-        logger.error('Failed to send message to Kafka', { 
+        logger.error('Failed to send message to Kafka', {
             error: error.message,
-            factoryId 
+            factoryId
         });
         stats.errors++;
-        
+
         // Retry logic
         await retryKafkaSend(factoryId, payload);
     }
@@ -243,9 +284,9 @@ async function retryKafkaSend(factoryId, payload, attempt = 1) {
         stats.messagesForwarded++;
         logger.info('Kafka send succeeded on retry', { factoryId, attempt });
     } catch (error) {
-        logger.warn(`Kafka send retry ${attempt} failed`, { 
-            factoryId, 
-            error: error.message 
+        logger.warn(`Kafka send retry ${attempt} failed`, {
+            factoryId,
+            error: error.message
         });
         await retryKafkaSend(factoryId, payload, attempt + 1);
     }
@@ -268,13 +309,13 @@ function printStats() {
  */
 async function shutdown() {
     logger.info('Shutting down bridge...');
-    
+
     if (mqttClient) {
         mqttClient.end(true);
     }
-    
+
     await producer.disconnect();
-    
+
     logger.info('Bridge shutdown complete');
     process.exit(0);
 }

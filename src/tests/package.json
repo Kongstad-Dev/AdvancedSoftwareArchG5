@@ -1,0 +1,23 @@
+{
+    "name": "nfr-tests",
+    "version": "1.0.0",
+    "description": "NFR tests for Industry 4.0 Platform",
+    "scripts": {
+        "test": "mocha nfr_*.test.js --timeout 60000",
+        "test:latency": "mocha nfr_mqtt_kafka_latency.test.js --timeout 15000",
+        "test:heartbeat": "mocha nfr_heartbeat_to_mms_latency.test.js --timeout 35000",
+        "test:failure": "mocha nfr_failure_and_reading_latency.test.js --timeout 50000",
+        "test:all-latency": "mocha nfr_*latency.test.js --timeout 60000"
+    },
+    "dependencies": {
+        "mqtt": "^5.3.0",
+        "kafkajs": "^2.2.4",
+        "mongodb": "^6.3.0",
+        "pg": "^8.11.3",
+        "axios": "^1.6.2"
+    },
+    "devDependencies": {
+        "mocha": "^10.2.0",
+        "chai": "^4.3.10"
+    }
+}

@@ -74,7 +74,7 @@ class SchedulingService {
                 if (a.current_load !== b.current_load) {
                     return a.current_load - b.current_load; // Lower load = better
                 }
-                
+
                 const healthyA = healthySensorCounts[a.id] || 0;
                 const healthyB = healthySensorCounts[b.id] || 0;
                 return healthyB - healthyA; // More healthy sensors = better
@@ -85,7 +85,7 @@ class SchedulingService {
             logger.warn('Failed to get sensor health data from MMS, falling back to load-based selection', {
                 error: error.message
             });
-            
+
             // Fallback to simple load-based selection if MMS is unavailable
             const result = await client.query(
                 `SELECT * FROM factories 

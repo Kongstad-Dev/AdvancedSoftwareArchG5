@@ -163,7 +163,7 @@ async function loadFactoryData(factoryId) {
         // Load real sensor health data from MMS
         let sensorHealthData = null;
         try {
-            const sensorResponse = await fetch(`http://localhost:8000/factories/${factoryId}/sensors`);
+            const sensorResponse = await fetch(`/mms/factories/${factoryId}/sensors`);
             const sensorData = await sensorResponse.json();
             if (sensorData.success) {
                 sensorHealthData = sensorData.data;

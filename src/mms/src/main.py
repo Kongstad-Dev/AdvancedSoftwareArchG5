@@ -13,8 +13,6 @@ from typing import Optional
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
-from kafka import KafkaConsumer
-from kafka.errors import KafkaError
 
 from .config import config
 from .db.mongodb import mongodb_client
@@ -22,7 +20,7 @@ from .monitoring.heartbeat_monitor import heartbeat_monitor
 from .monitoring.fault_detector import fault_detector
 from .monitoring.factory_status import factory_status_manager, FactoryStatus
 from .monitoring.sensor_health_monitor import sensor_health_monitor
-from .monitoring.mqtt_listener import factory_mqtt_listener
+from .monitoring.kafka_listener import factory_kafka_listener
 from .predictive.risk_predictor import risk_predictor
 from .redundancy.failover_manager import failover_manager
 from .redundancy.recovery_manager import recovery_manager
@@ -38,100 +36,6 @@ logger = logging.getLogger(__name__)
 
 # Global shutdown flag
 shutdown_event = asyncio.Event()
-
-
-class KafkaHeartbeatConsumer:
-    """Kafka consumer for factory heartbeats"""
-    
-    def __init__(self):
-        self._consumer: Optional[KafkaConsumer] = None
-        self._running = False
-    
-    def connect(self) -> bool:
-        """Connect to Kafka"""
-        try:
-            self._consumer = KafkaConsumer(
-                config.kafka_heartbeat_topic,
-                bootstrap_servers=config.kafka_brokers_list,
-                group_id=config.kafka_consumer_group,
-                auto_offset_reset='latest',
-                enable_auto_commit=True,
-                value_deserializer=lambda x: json.loads(x.decode('utf-8'))
-            )
-            logger.info(f"Connected to Kafka broker(s): {config.kafka_brokers}")
-            return True
-        except KafkaError as e:
-            logger.error(f"Failed to connect to Kafka: {e}")
-            return False
-    
-    async def consume_loop(self):
-        """Main consumption loop"""
-        if not self._consumer:
-            if not self.connect():
-                logger.error("Cannot start consumer loop - not connected")
-                return
-        
-        self._running = True
-        logger.info("Starting Kafka consumer loop")
-        
-        while self._running and not shutdown_event.is_set():
-            try:
-                # Poll for messages with timeout
-                messages = self._consumer.poll(timeout_ms=1000)
-                
-                for topic_partition, records in messages.items():
-                    for record in records:
-                        await self._process_message(record.value)
-                
-                # Small delay to prevent tight loop
-                await asyncio.sleep(0.1)
-                
-            except KafkaError as e:
-                logger.error(f"Kafka consumer error: {e}")
-                await asyncio.sleep(5)  # Wait before retry
-                self.connect()  # Try to reconnect
-            except Exception as e:
-                logger.error(f"Unexpected error in consumer loop: {e}")
-                await asyncio.sleep(1)
-    
-    async def _process_message(self, message: dict):
-        """Process a heartbeat message"""
-        try:
-            factory_id = message.get("factory_id")
-            timestamp_str = message.get("timestamp")
-            metrics = message.get("metrics", {})
-            
-            if not factory_id:
-                logger.warning("Received heartbeat without factory_id")
-                return
-            
-            # Parse timestamp
-            if timestamp_str:
-                try:
-                    timestamp = datetime.fromisoformat(timestamp_str.replace('Z', '+00:00'))
-                except ValueError:
-                    timestamp = datetime.utcnow()
-            else:
-                timestamp = datetime.utcnow()
-            
-            # Process heartbeat
-            heartbeat_monitor.process_heartbeat(factory_id, timestamp, metrics)
-            
-            logger.debug(f"Processed heartbeat from {factory_id}")
-            
-        except Exception as e:
-            logger.error(f"Error processing heartbeat message: {e}")
-    
-    def stop(self):
-        """Stop the consumer"""
-        self._running = False
-        if self._consumer:
-            self._consumer.close()
-            logger.info("Kafka consumer closed")
-
-
-# Create global consumer instance
-kafka_consumer = KafkaHeartbeatConsumer()
 
 
 async def monitoring_loop():
@@ -214,15 +118,19 @@ async def lifespan(app: FastAPI):
     # Connect to PMS
     pms_client.connect()
     
-    # Connect to MQTT for sensor monitoring
-    if not factory_mqtt_listener.connect():
-        logger.warning("Failed to connect to MQTT broker - sensor monitoring disabled")
+    # Connect to Kafka for sensor monitoring
+    if not factory_kafka_listener.connect():
+        logger.warning("Failed to connect to Kafka broker - sensor monitoring disabled")
+    else:
+        logger.info(f"Connected to Kafka broker(s): {config.kafka_brokers}")
+        logger.info("Starting Kafka consumer loop")
+        # Start Kafka consumer loop as background task
+        kafka_listener_task = asyncio.create_task(factory_kafka_listener.start())
     
     # Setup callbacks
     setup_callbacks()
     
     # Start background tasks
-    consumer_task = asyncio.create_task(kafka_consumer.consume_loop())
     monitoring_task = asyncio.create_task(monitoring_loop())
     
     logger.info("MMS started successfully")
@@ -233,19 +141,17 @@ async def lifespan(app: FastAPI):
     logger.info("Shutting down MMS...")
     shutdown_event.set()
     
-    kafka_consumer.stop()
-    factory_mqtt_listener.stop()
+    factory_kafka_listener.stop()
     heartbeat_monitor.stop_monitoring()
     mongodb_client.close()
     pms_client.close()
     
     # Cancel background tasks
-    consumer_task.cancel()
     monitoring_task.cancel()
     
     try:
-        await consumer_task
-    except asyncio.CancelledError:
+        await kafka_listener_task
+    except (asyncio.CancelledError, UnboundLocalError):
         pass
     
     try:

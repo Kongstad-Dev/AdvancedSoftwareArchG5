@@ -7,23 +7,30 @@
     "start": "node src/server.js",
     "dev": "nodemon src/server.js",
     "test": "jest",
+    "test:nfr": "mocha ../tests/nfr_*.test.js --timeout 60000",
+    "test:latency": "mocha ../tests/nfr_mqtt_kafka_latency.test.js --timeout 15000",
+    "test:failure": "mocha ../tests/nfr_sensor_failure_detection.test.js --timeout 60000",
     "proto:generate": "grpc_tools_node_protoc --js_out=import_style=commonjs,binary:./src/proto --grpc_out=grpc_js:./src/proto --proto_path=../proto ../proto/factory.proto"
   },
   "dependencies": {
     "@grpc/grpc-js": "^1.9.0",
     "@grpc/proto-loader": "^0.7.10",
+    "cors": "^2.8.5",
     "express": "^4.18.2",
-    "pg": "^8.11.3",
+    "helmet": "^7.1.0",
     "kafkajs": "^2.2.4",
     "mqtt": "^5.3.0",
+    "pg": "^8.11.3",
     "uuid": "^9.0.0",
-    "winston": "^3.11.0",
-    "cors": "^2.8.5",
-    "helmet": "^7.1.0"
+    "winston": "^3.11.0"
   },
   "devDependencies": {
-    "nodemon": "^3.0.1",
-    "jest": "^29.7.0"
+    "axios": "^1.13.2",
+    "chai": "^4.5.0",
+    "jest": "^29.7.0",
+    "mocha": "^10.8.2",
+    "mongodb": "^6.21.0",
+    "nodemon": "^3.0.1"
   },
   "engines": {
     "node": ">=18.0.0"
