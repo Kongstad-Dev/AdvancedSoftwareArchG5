@@ -1,0 +1,37 @@
+\section{Requirements–Architecture Traceability} \begin{table*}[htbp] \centering \caption{Traceability of Requirements to Architectural Elements and Quality Attributes} \label{tab:traceability_table} \begin{tabular}{|p{1.2cm}|p{3cm}|p{4cm}|p{6cm}|} \hline \textbf{Req ID} & \textbf{Responsible System / Subsystem} & \textbf{Architectural Components / Microservices} & \textbf{Addressed Quality Attributes (QAs)} \\ \hline
+FR1 & MMS – Monitoring Subsystem & Monitoring Service, Sensor Adapters, Kafka topics & Availability, Performance, Reliability \\
+\hline
+FR2 & MMS – Redundancy Management Subsystem & Redundancy Management Service, failover logic, redundant sensors/equipment & Availability, Reliability \\
+\hline
+FR3 & PMS – Scheduling and Workflow Configuration & Scheduling Service, Workflow Configuration Service, Kafka events & Modifiability, Interoperability, Performance \\
+\hline
+FR4 & DIS – CI/CD Pipeline + Deployment Orchestrator & Deployment Orchestrator, CI/CD Service, Docker containers & Deployability, Availability, Reliability \\
+\hline
+FR5 & PMS + MMS – Coordination Services & Kafka message bus, cross-factory integration services & Interoperability, Scalability, Performance \\
+\hline
+FR6 & MMS – Anomaly Detection Subsystem & Anomaly Detection Service, Kafka topics, monitoring dashboards & Availability, Reliability, Performance \\
+\hline
+FR7 & MMS + PMS Adapters & Adapter/Connector Services, protocol translation modules & Interoperability, Flexibility \\
+\hline
+FR8 & PMS – Scheduling / Optimization Module & Scheduling Service, Workflow Optimization Module & Performance, Energy Efficiency, Modifiability \\
+\hline
+FR9 & PMS + MMS + DIS & Notification Service, Role-based Access Control module & Security, Usability, Availability \\
+\hline
+NFR1 & MMS + PMS + DIS & Redundancy Management Service, Deployment Orchestrator, Kafka & Availability, Reliability \\
+\hline
+NFR2 & MMS + PMS & Monitoring Service, Scheduling Service, Kafka, event-driven messaging & Performance, Scalability \\
+\hline
+NFR3 & MMS + PMS + DIS & Microservices architecture, Kafka, adapters, horizontal scaling & Scalability, Interoperability \\
+\hline
+NFR4 & PMS + MMS + DIS & Role-based access control, authentication modules, encrypted channels & Security \\
+\hline
+NFR5 & PMS + MMS + DIS & Modular microservices, adapters, deployment orchestrator & Modifiability, Deployability \\
+\hline
+NFR6 & MMS + PMS & Monitoring Service, Redundancy Management Service, Anomaly Detection Service & Reliability, Availability \\
+\hline
+NFR7 & PMS + MMS & Dashboards, notification modules, user interfaces & Usability \\
+\hline
+NFR8 & MMS + PMS + DIS & Adapter/Connector Services, standardized communication protocols & Interoperability, Flexibility \\
+\hline
+\end{tabular}
+\end{table*}

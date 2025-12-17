@@ -1,0 +1,41 @@
+% Preamble (only if you don't already have these)
+% \usepackage{array}
+
+\begin{table*}[htbp]
+\centering
+\caption{Tabular Form of the Utility Tree for the Industrial Monitoring System}
+\label{tab:QA-utility-tree-table}
+\renewcommand{\arraystretch}{1.2}
+
+\begin{tabular}{|p{3.2cm}|p{4.0cm}|p{7.2cm}|}
+\hline
+\textbf{Quality Attribute} & \textbf{Attribute Refinement} & \textbf{ASR Scenario} \\
+\hline
+
+Availability &
+Failover during peak production &
+A primary sensor fails during peak production. The system promotes a backup sensor to primary within 10 seconds with no data loss. (H, H) \\
+\hline
+
+Deployability &
+Rolling update of services &
+A new service version is deployed while the system is running. The update proceeds incrementally with no downtime and service availability is maintained. (M, M) \\
+\hline
+
+Interoperability &
+Integration of legacy devices &
+A legacy device using MQTT or a proprietary protocol is connected. An adapter translates messages into canonical Kafka events without changes to core services. (M, M) \\
+\hline
+
+Performance &
+End-to-end event processing latency &
+A sensor heartbeat or event is generated. The system processes and persists the event within a defined latency threshold. (H, H) \\
+\hline
+
+Scalability &
+High sensor load &
+500 concurrent sensors per factory send data simultaneously. The system maintains stable processing across multiple factories with no backlog and bounded latency. (H, H) \\
+\hline
+
+\end{tabular}
+\end{table*}

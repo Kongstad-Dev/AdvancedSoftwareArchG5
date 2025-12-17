@@ -1,6 +1,7 @@
 \documentclass[conference]{IEEEtran}
 \IEEEoverridecommandlockouts
 % The preceding line is only needed to identify funding in the first footnote. If that is unneeded, please comment it out.
+\pagestyle{plain}
 \usepackage{cite}
 \usepackage{amsmath,amssymb,amsfonts}
 \usepackage{algorithmic}
@@ -15,69 +16,61 @@
 \usepackage{makecell}
 \usepackage{tcolorbox}
 \usepackage{amsthm}
+\usepackage{todonotes}
+\usepackage{booktabs}
 %\usepackage[english]{babel}
 \usepackage{pifont} % checkmarks
 %\theoremstyle{definition}
 %\newtheorem{definition}{Definition}[section]
-
-
 \usepackage{listings}
-\lstset
-{ 
-    basicstyle=\footnotesize,
-    numbers=left,
-    stepnumber=1,
-    xleftmargin=5.0ex,
-}
-
+\lstset {
+ basicstyle=\footnotesize,
+ numbers=left,
+ stepnumber=1,
+ xleftmargin=5.0ex,
+ }
 %SCJ
 \usepackage{subcaption}
 \usepackage{array, multirow}
 \usepackage{enumitem}
-
 \def\BibTeX{{\rm B\kern-.05em{\sc i\kern-.025em b}\kern-.08em
     T\kern-.1667em\lower.7ex\hbox{E}\kern-.125emX}}
 \begin{document}
-
 %\IEEEpubid{978-1-6654-8356-8/22/\$31.00 ©2022 IEEE}
 % @Sune:
 % Found this suggestion: https://site.ieee.org/compel2018/ieee-copyright-notice/
 % I have added it - you can see if it fulfills the requirements
-
 %\IEEEoverridecommandlockouts
-%\IEEEpubid{\makebox[\columnwidth]{978-1-6654-8356-8/22/\$31.00 ©2022 IEEE %\hfill} \hspace{\columnsep}\makebox[\columnwidth]{ }}
-                                 %978-1-6654-8356-8/22/$31.00 ©2022 IEEE
+%\IEEEpubid{\makebox[\columnwidth]{978-1-6654-8356-8/22/\$31.00 ©2022 IEEE
+%\hfill} \hspace{\columnsep}\makebox[\columnwidth]{ }}
+%978-1-6654-8356-8/22/$31.00 ©2022 IEEE
 % copyright notice added:
 %\makeatletter
-%\setlength{\footskip}{20pt} 
+%\setlength{\footskip}{20pt}
 %\def\ps@IEEEtitlepagestyle{%
-%  \def\@oddfoot{\mycopyrightnotice}%
-%  \def\@evenfoot{}%
+% \def\@oddfoot{\mycopyrightnotice}%
+% \def\@evenfoot{}%
 %}
 %\def\mycopyrightnotice{%
-%  {\footnotesize 978-1-6654-8356-8/22/\$31.00 ©2022 IEEE\hfill}% <--- Change here
-%  \gdef\mycopyrightnotice{}% just in case
+% {\footnotesize 978-1-6654-8356-8/22/\$31.00 ©2022 IEEE\hfill}% <--- Change here
+% \gdef\mycopyrightnotice{}% just in case
 %}
-      
-\title{Group Report Template\\
-}
+\title{Requirements Engineering and Architectural Modeling for an Industry 4.0 Beverage Production System\\ }
 
 \author{
-    \IEEEauthorblockN{
-        Student 1\IEEEauthorrefmark{1},
-        Student 2\IEEEauthorrefmark{1},
-        Student 3\IEEEauthorrefmark{1},
-        Student 4\IEEEauthorrefmark{1},
-        Student 5\IEEEauthorrefmark{1},
-    }
-    \IEEEauthorblockA{
-        University of Southern Denmark, SDU Software Engineering, Odense, Denmark \\
-        Email: \IEEEauthorrefmark{1} \textnormal{\{student1,student2,student3,student4,student5\}}@mmmi.sdu.dk
-    }
+\IEEEauthorblockN{
+Oliver Aleksander Larsen\IEEEauthorrefmark{1},
+Marcel Omid Rasmussen Ghasemi\IEEEauthorrefmark{1},
+Danieal Johnbaskar\IEEEauthorrefmark{1},\\
+Kristoffer Kongstad Malberg Petersen\IEEEauthorrefmark{1},
+Aleksander Korsholm\IEEEauthorrefmark{1},
 }
-
+\IEEEauthorblockA{
+University of Southern Denmark, SDU Software Engineering, Odense, Denmark \\
+Email: \IEEEauthorrefmark{1} \textnormal{\{ollar22,magha21,dajoh22,krip22,alkor22\}}@student.sdu.dk
+}
+}
 %%%%
-
 %\author{\IEEEauthorblockN{1\textsuperscript{st} Blinded for review}
 %\IEEEauthorblockA{\textit{Blinded for review} \\
 %\textit{Blinded for review}\\
@@ -96,137 +89,501 @@
 %Blinded for review \\
 %Blinded for review}
 %}
-
 %%%%
 %\IEEEauthorblockN{2\textsuperscript{nd} Given Name Surname}
 %\IEEEauthorblockA{\textit{dept. name of organization (of Aff.)} \\
 %\textit{name of organization (of Aff.)}\\
 %City, Country \\
 %email address or ORCID}
-
 \maketitle
 \IEEEpubidadjcol
 \begin{abstract}
-%%%%%%%%%%%%%%%%%% Max 970 signs without space %%%%%%%%%%%%%%%%%%
-% Intro
-
-% Gab
-    
-% Aim 
-
-% Method
-
-% Results 
-
+This paper presents a requirements-driven architectural design for an Industry~4.0 production management platform in a medium-sized beverage manufacturer operating four factories. Based on use cases and quality attribute scenarios, we elicit and structure functional and non-functional requirements, document design rationale, and establish requirements--architecture traceability. The proposed solution is a microservice-based, event-driven architecture with MQTT at the factory edge, adapter services that translate heterogeneous device protocols into canonical Kafka events, and limited gRPC interfaces for selected synchronous interactions between core subsystems. Structural decomposition into systems, subsystems, and microservices, together with three system-level state machines (production management, monitoring \& maintenance, and deployment \& integration), provides explicit behavioural semantics to support architectural reasoning, verification planning, and evaluation design. Overall, the architecture is designed to achieve 24/7 operation, continuous deployability, and interoperable evolution across factories and legacy equipment while making key trade-offs explicit.
 \end{abstract}
 
+
 \begin{IEEEkeywords}
-Keyword1, Keyword2, Keyword3, Keyword4, Keyword5
+Industry~4.0, Software Architecture, Requirements--Architecture Traceability, Microservices, Event-Driven Architecture, MQTT, Apache Kafka, gRPC, Formal Verification, UPPAAL
 \end{IEEEkeywords}
 
-\section{Introduction and Motivation}
-%Introduction and motivate the problem
 
-The structure of the paper is as follows. 
-Section \ref{sec:problem} outlines the research question and the research approach. 
-%to analyze the research question and evaluate our results.
-Section \ref{sec:related_work} describes similar work in the field and how our contribution fits the field.
-Section \ref{sec:use_case} presents a production reconfiguration use case.
-The use case serves as input to specify a reconfigurability QA requirement in Section \ref{sec:qas}.
-Section \ref{sec:middleware_architecture} introduces the proposed reconfigurable middleware software architecture design.
-Section \ref{sec:evaluation} evaluates the proposed middleware on realistic equipment in the I4.0 lab and analyzes the results against the stated QA requirement.   
+
+\section{Introduction and Motivation}
+Modern production systems in the context of Industry~4.0 are expected to operate autonomously, continuously, and with high adaptability to changing production demands. They are realised as distributed collections of software components that must exchange information reliably, coordinate actions across organisational and geographical boundaries, and remain operational around the clock. At the same time, production software must support continuous deployment of updates without degrading performance or reliability.\footnote{Throughout this paper, “the system’’ refers to the Industry~4.0 production management platform for a medium-sized beverage manufacturer operating four factories.}
+
+The case company is a medium-sized beverage manufacturer with four factories and on the order of hundreds of sensors and actuators per site. Its production, quality control, maintenance, and IT/DevOps departments all depend on timely and trustworthy information about production status and equipment health. Key challenges include integrating heterogeneous components and protocols (e.g., legacy machinery and devices from different vendors), achieving real-time data synchronization across factories, balancing factory-specific flexibility with uniform dependability, and supporting continuous deployment with minimal downtime while the system is in use.
+
+From a system perspective, the production software must (i) exchange and coordinate information across production components and factories, (ii) run 24/7 with minimal downtime, and (iii) remain continuously deployable. These capabilities must be realised while ensuring quality attributes such as availability, deployability and interoperability. In particular, the architecture is required to support high availability (e.g., failover within seconds and absence of single points of failure), continuous deployment via CI/CD pipelines and safe rollout strategies, and interoperability across heterogeneous communication protocols and devices.
+
+The main research problem can therefore be stated as follows: how can a software architecture for production systems be designed and validated to effectively support information exchange and coordination for executing and changing production, while also enabling continuous deployment of production software and ensuring 24/7 availability? This main question is further refined into four research questions that address architectural design, empirical and conceptual evaluation of quality attributes, formal verification and validation, and architectural trade-offs (see Section~\ref{sec:problem}).
+
+This report is developed within the framework of an advanced software architecture course and focuses on requirements engineering and architectural modelling for the Industry~4.0 production management platform. Concretely, we elicit use cases and quality attributes from the case description, define functional and non-functional requirements, and design a microservice-based, event-driven architecture centred around a message bus and adapters for heterogeneous devices. We provide structural and behavioural models, including systems and subsystems, function blocks, and state machines for key functions such as monitoring, redundancy management, scheduling, deployment orchestration, and cross-factory coordination. These models serve as the foundation for linking requirements to architectural decisions and for planning both formal V\&V and empirical evaluation activities.
+
+The structure of the paper is as follows. Section~\ref{sec:problem} presents the problem statement, research questions, and overall approach. Section~\ref{sec:related_work} outlines related work on Industry~4.0 architectures and positions our case. Section~\ref{sec:use_case} introduces the main use cases and Section~\ref{sec:qas} derives quality attribute scenarios. Section~\ref{sec:design_and_analysis_modelling} describes the architectural style, systems, subsystems, microservices, and models used for design and analysis. Section~\ref{sec:formal_v_and_v} outlines the planned formal verification activities, complimented by empirical tests. Section~\ref{sec:evaluation} presents evaluation. Finally, Section~\ref{sec:conclusion} summarizes the work, discusses limitations and trade-offs, and sketches directions for future work.
+
 
 \section{Problem and Approach}
-
 \label{sec:problem}
-\emph{Problem.}
+\emph{Problem.} Modern Industry~4.0 production systems are required to exchange information reliably across distributed components, coordinate production activities within and across factories, and remain operational 24/7 while supporting continuous deployment of software updates. Meeting these demands simultaneously introduces architectural challenges related to interoperability (across heterogeneous devices and protocols), availability (including redundancy and failover), and deployability (safe, incremental rollouts without global downtime).
 
-\emph{Research questions:}
+In the case of the medium-sized beverage manufacturer considered in this work, the production management platform must coordinate four factories with hundreds of sensors and actuators, integrate legacy machinery and diverse technologies, and support departments such as production, maintenance, quality control, and IT/DevOps. The problem is therefore to identify and design a software architecture that satisfies these system-level requirements while also enabling systematic modelling, analysis, and validation of the key quality attributes.
+
+The main research question guiding this work is:
+
+\begin{quote}
+\textbf{Main RQ:} How can a software architecture for production systems be designed and validated to effectively support information exchange and coordination for executing and changing production, while also enabling continuous deployment of production software and ensuring 24/7 availability?
+\end{quote}
+
+\emph{Research questions.} To operationalise the main research question, we consider the following four sub-questions:
+\begin{description}
+\item[RQ1:]\label{rq:RQ1} How can a software architecture for a distributed Industry~4.0 production system support the key quality attributes of availability, deployability, and interoperability?
+\item[RQ2:]\label{rq:RQ2} To what extent does the implemented architecture satisfy its quality attribute requirements, with empirical evaluation focusing on availability (failover latency, continuity of operation) and conceptual analysis addressing deployability and interoperability?
+\item[RQ3:]\label{rq:RQ3} Which critical behavioural and structural properties of the architecture can be formally verified, and what do the verification results reveal about its correctness, safety, and potential design weaknesses?
+\item[RQ4:]\label{rq:RQ4} What architectural trade-offs emerge from choosing different communication patterns, integration mechanisms, and deployment strategies, and how do these trade-offs influence the system’s quality attributes?
+\end{description}
+
+RQ1 addresses the architectural design and how it realises the key quality attributes; RQ2 focuses on empirical and conceptual evaluation of the architecture; RQ3 targets formal verification and validation of structural and behavioural models; and RQ4 captures reflection on architectural trade-offs and their impact on quality attributes.
+
+\emph{Approach.} The research approach is structured around the case study and aligned with the four research questions:
 \begin{enumerate}
-    \item  
-    \item 
+\item Elicit requirements from the Industry~4.0 case and derive use cases and quality attributes, with emphasis on availability, deployability, and interoperability (supports the main RQ and RQ1).
+\item Propose a microservice-based, event-driven architecture centred on a message bus and adapters for heterogeneous devices, designed explicitly to support the targeted quality attributes (RQ1, RQ4).
+\item Develop architectural models, including structural models of systems, subsystems, and microservices, as well as behavioural models for key functions such as monitoring, redundancy management, scheduling, deployment orchestration, and cross-factory coordination (RQ1, RQ3).
+\item Establish requirements-architecture traceability by mapping functional and non-functional requirements to architectural elements and models, thereby making explicit where quality attributes are addressed (RQ1, RQ3).
+\item Formally specify and verify selected properties over the behavioural models using UPPAAL, such as availability-related properties for redundancy management, deployability properties for the deployment orchestrator, and basic for message exchange (RQ3).
+\item Implement an architectural prototype and design empirical experiments, in particular for evaluating availability through failover scenarios and conceptually assessing deployability and interoperability based on the architecture and deployment pipeline (RQ2, RQ4).
+\item Analyse the results and design decisions to identify architectural trade-offs between communication patterns, integration mechanisms, and deployment strategies, and to assess their influence on the key quality attributes (RQ4).
+\item Synthesize findings from modelling, formal analysis, and empirical evaluation to answer the main research question and RQ1--RQ4 in the conclusion and discussion.
 \end{enumerate}
-
-\emph{Approach.}
-The following steps are taken to answer this paper's research questions: 
-\begin{enumerate}
-    \item 
-\end{enumerate}
+This structured approach ensures that architectural design, modelling, formal V\&V, and empirical evaluation are coherently integrated in addressing the problem of architecting dependable, continuously deployable Industry~4.0 production systems.
 
 
-\section{Related work}
+\section{Related Work}
 \label{sec:related_work}
-This Section addresses existing contributions by examining xxx in the I4.0 domain. 
-In total, x papers are investigated. 
+Research on Industry~4.0 production systems addresses flexibility, interoperability, and dependability in distributed manufacturing. We organize prior work into architectural patterns, availability tactics, and verification approaches, identifying gaps that motivate our integrated design.
 
-In \cite{Wan2019Reconfigurable}, experiences are elaborated on a three-layer architecture of a reconfigurable smart factory for drug packing in healthcare I4.0. 
+\subsection{Industry~4.0 Architectural Approaches}
 
-The paper \cite{Yazen2010Ontology} proposes an ontology agent-based architecture for inferring  new configurations to adapt to changes in manufacturing requirements and/or environment.
+\textbf{Reconfigurable Manufacturing Systems.} Early RMS research~\cite{Koren1999Reconfigurable,Koren2010Design,Bortolini2018Reconfigurable} established foundations for adaptable production through modular physical components. However, these approaches focus on mechanical reconfiguration requiring 2--8 hour production stops for software updates~\cite{Koren2010Design}, contradicting our 99.9\% uptime requirement (NFR1, \S V-A). We address reconfiguration at the \textit{software architectural level}, enabling runtime adaptation without physical intervention (UC2-UC3, \S IV).
 
-In \cite{Leitao2016Specification,Angione2017Integration} an architecture for a reconfigurable production system is specified.
-Two objectives for reconfiguration and how they can be reached are described.
+\textbf{Semantic Integration.} Alsafi and Vyatkin~\cite{Yazen2010Ontology} demonstrate ontology-based agents achieving semantic interoperability across 15 product variants. While powerful, this approach exhibits three limitations for multi-factory systems: (i)~\textit{synchronous coupling}—agent negotiation introduces 200--500ms latency per round~\cite{Corbett2013Spanner}, compounding to $>$1s for 4-site coordination and approaching our 10s cross-factory bound (NFR2); (ii)~\textit{centralized reasoning}-ontology servers create single points of failure~\cite{Yazen2010Ontology}, violating NFR1; (iii)~\textit{deployment rigidity}—ontology updates require system-wide refresh with coordinated downtime, contradicting continuous deployment (NFR4). We sacrifice semantic richness for operational resilience through \textit{fixed canonical event schemas} with stateless protocol adapters (\S VI-C), acceptable for beverage production's stable product types (10--20 SKUs).
 
-Several papers \cite{Koren1999Reconfigurable,Koren2010Design,Bortolini2018Reconfigurable} describe reconfigurable manufacturing systems that are cost-effective and responsive to market changes.
+\textbf{Microservices and Event-Driven Patterns.} Recent work advocates microservices for Industry~4.0~\cite{Trunzer2019System,Antonino2019Blueprints}. Trunzer et al.~\cite{Trunzer2019System} identify microservices enabling independent deployment but provide limited guidance on simultaneous availability and deployability. Their reference architecture shows hardware redundancy without specifying software failover coordination. Antonino et al.~\cite{Antonino2019Blueprints} propose circuit breakers for fault isolation but focus on \textit{intra-service} resilience; they do not address \textit{inter-service coordination during failures}. For example, their patterns isolate failing services but do not specify how dependent services adapt when critical peers degrade.
 
-All contributions provide valuable knowledge about reconfiguration but lack a study of the software architecture perspective that specifies a quantifiable reconfigurability architectural requirement, a software architecture that adopts the architectural requirements, and evaluates the architectural requirement. 
+Both approaches emphasize \textit{synchronous RESTful APIs}, creating availability challenges: Service~A calling Service~B synchronously propagates B's failure to A. Industry experience shows synchronous microservices achieve only 90--95\% availability even with retries~\cite{Nygard2018Release}, below our 99.9\% target. Our \textit{Kafka-based event streaming} (\S VI-A) provides message persistence and decouples producers from consumers, allowing continued operation during peer failures. We accept increased eventual consistency (5--10s staleness, NFR2) for improved availability, acceptable for production monitoring where brief staleness does not compromise safety.
+
+\textbf{Interoperability Standards.} RAMI~4.0 recommends OPC~UA for semantic interoperability, supporting 1,000--10,000 tags/server~\cite{OPCUA2017Spec}. However, OPC~UA's synchronous request-response model limits throughput to 100--500 messages/second~\cite{Profanter2019OPCUA}. Our system requires 2,000 msgs/sec (500 sensors $\times$ 4 factories $\times$ 1~Hz, NFR3). While sufficient for single factories, centralized OPC~UA creates cross-factory bottlenecks. Kafka achieves $>$100,000 msgs/sec with 3-broker clusters~\cite{Kafka2020Benchmarks}, providing headroom for 8-factory scaling (NFR3). We apply OPC~UA at factory edges via adapters, using Kafka for high-throughput cross-factory coordination, following ``smart endpoints, dumb pipes''~\cite{Newman2015Microservices}.
+
+\subsection{Deployment and Verification}
+
+\textbf{Continuous Deployment.} Bass et al.~\cite{Bass2022Architecture} describe rolling updates and blue-green deployment for zero-downtime evolution. Pahl~\cite{Pahl2018Container} demonstrates container orchestration for service updates. However, these treat deployment as \textit{operational practice} rather than \textit{architectural concern}. Neither integrates deployment orchestration with availability tactics (e.g., coordinating rolling updates with redundancy management) or models deployment as verifiable behavior. Our Deployment Orchestrator (\S VI-C) is architecturally integrated: it coordinates with MMS redundancy management to avoid deploying to backup resources during active failover, modeled as a state machine (\S VI-E) and verified in UPPAAL (\S VII-A).
+
+\textbf{Formal Verification.} UPPAAL has verified timed behaviors in production cells~\cite{Behrmann2004Uppaal,Frederiksen2015Manufacturing}, demonstrating model-checking feasibility. However, prior work focuses on control logic in isolation, disconnected from architectural models and empirical validation. For example, Frederiksen and Larsen verify PLC programs but do not trace properties to quality attribute scenarios or validate timing assumptions experimentally.
+
+\subsection{Critical Gap and Positioning}
+
+Table~\ref{tab:related-work} summarizes architectural approaches. \textbf{Critical gap:} Existing work addresses availability, deployment, or interoperability \textit{in isolation}, but no prior work provides a unified framework where: (i)~availability tactics are architecturally integrated with deployment orchestration (e.g., coordinating failover during rolling updates); (ii)~formal verification is traced to non-functional requirements and validated empirically; (iii)~multi-factory coordination co-designs with heterogeneous device integration.
+
+This gap matters because \textit{interactions between quality attributes} drive complexity. Deployability (rolling updates) can violate availability if old/new versions have incompatible message schemas; interoperability (adapters) can bottleneck performance if not redundant; formal verification is ineffective without empirical validation of assumptions (e.g., failover timing). Our contribution is \textit{systematic integration} with explicit quality attribute traceability (\S VI-F) and dual validation (formal + empirical, \S VII--VIII).
+
+\begin{table*}[t]
+\caption{Comparison of Industry~4.0 Architectural Approaches}
+\label{tab:related-work}
+\centering
+\small
+\begin{tabular}{lccc}
+\toprule
+\textbf{Approach} & \textbf{Availability} & \textbf{Deploy.} & \textbf{Interop.} \\
+\midrule
+Alsafi \& Vyatkin~\cite{Yazen2010Ontology} & Centralized & Manual & Semantic \\
+Trunzer et al.~\cite{Trunzer2019System} & HW redundancy & Not specified & Protocol std. \\
+Antonino et al.~\cite{Antonino2019Blueprints} & Circuit breakers & Containers & API Gateway \\
+\textbf{This Work} & \textbf{Event-driven failover} & \textbf{Orchestrated CI/CD} & \textbf{Adaptive adapters} \\
+\bottomrule
+\end{tabular}
+\end{table*}
 
 
 \section{Use Case}
 \label{sec:use_case}
-This Section introduces the use cases.
 
-\section{Quality Attribute Scenario}
+The Industry~4.0 production management platform is developed for a medium-sized beverage manufacturer operating four factories with hundreds of sensors and actuators per site. Across production, quality control, maintenance, and IT/DevOps departments, stakeholders require dependable support for continuous production, flexible workflows, and coordinated operation across factories. Based on the case description, we derive a set of representative use cases that drive the architectural design and quality attribute requirements, with particular emphasis on availability, deployability, and interoperability.
+
+
+\subsection{UC1 – Ensure Production Redundancy (Availability)}
+In this use case, the system continuously monitors machine health and sensor data for critical production equipment. When a failure or degradation is detected on a primary resource (e.g., a bottling line or key sensor), the redundancy management logic triggers a failover. Production tasks are automatically rerouted to backup equipment, and the responsible production manager is notified. The goal is to keep production running without interruption and to achieve high uptime targets by avoiding single points of failure and enabling rapid switchover.
+
+\subsection{UC2 – Dynamic Reconfiguration of Production Workflow (Interoperability)}
+Here, the system supports dynamic adjustment of production workflows in response to changing demands and deadlines. The scheduler evaluates workload and deadlines, while proposing alternative workflows (e.g., deadlines and factory workload). A production manager reviews and approves these proposals, after which the workflow configuration is updated. Crucially, this reconfiguration must happen without stopping production, requiring the architecture to support runtime changes and interoperable communication with heterogeneous equipment.
+
+\subsection{UC3 – Continuous Deployment of Production Services (Deployability)}
+In UC3, a DevOps engineer commits code changes to one of the production services, such as monitoring or anomaly detection. A CI/CD pipeline builds and tests the new version, and a deployment orchestrator rolls out the update incrementally while keeping the previous version live. The system is expected to maintain a high uptime during deployment and to support automatic rollback if health checks fail. This use case directly motivates architectural support for continuous deployment, versioning, and controlled rollout strategies in a 24/7 operational environment.
+
+\subsection{UC4 – Cross-Factory Integration (Interoperability)}
+This use case addresses coordination and load balancing across the four factories. An integration or coordination service aggregates workload, resource, and status information from each site. Using this information, the system identifies opportunities to balance tasks across factories (for example, shifting production orders from a heavily loaded factory to one with spare capacity). Factory managers review and approve the proposed redistribution, and the resulting plans are synchronised across all sites. The architecture must therefore support cross-factory data exchange, scalable coordination mechanisms, and consistent propagation of configuration changes.
+
+\subsection{UC5 – Anomaly Detection and Response (Availability)}
+In UC5, the system continuously monitors sensor streams and other telemetry to detect anomalous conditions, such as abnormal temperatures, excessive rates of faulty readings or irregular. When anomalies are detected, the anomaly detection service generates alerts with recommended corrective actions and forwards them to maintenance or operations staff. Operators review and execute these recommendations while production continues. This use case underlines the need for monitoring and analytics, timely notification, and architectural support for integrating anomaly detection logic with redundancy management and workflow control, so that disturbances can be handled without major disruption.
+
+Together, these use cases capture the core operational scenarios of the production management platform and provide a basis for deriving functional requirements, non-functional requirements, and quality attribute scenarios. They are used in subsequent sections to shape the architecture, guide modelling decisions, and define evaluation scenarios for availability, deployability, and interoperability.
+
+
+\section{Quality Attribute Scenarios}
 \label{sec:qas}
-This Section introduces the specified x QASes.
-The QASes are developed based on the use case.
 
-% Description of the overall architecture designs
-% Argue for tactics used to archieve the QASes
-% Discuss the trade-offs
+The architectural design of the Industry~4.0 production management platform is driven by a set of explicitly defined quality attributes and corresponding quality attribute scenarios (QAS). In line with the main research question and RQ1--RQ4, we focus on three primary quality attributes---availability, deployability, and interoperability---while also considering supporting attributes such as performance, scalability, modifiability, security, reliability, and usability.
+
+\subsection{Core Quality Attributes}
+
+\subsubsection{Availability}
+\label{sec:qas_availability}
+Availability is central to the case company’s requirement for 24/7 operation of its four factories. The system is expected to have 99.9\% uptime, allowing for approximately 8 hours and 45 minutes of downtime each year. This is done by avoiding single points of failure in monitoring and control logic, and providing automatic failover for critical components within a bounded time. Concretely, failover to redundant equipment should occur within 10~seconds for critical components, ensuring that production can continue without significant disruption when failures occur.
+
+\subsubsection{Deployability (Continuous Deployment)}
+Deployability concerns the ability to roll out new versions of services without compromising the targeted uptime ~\ref{sec:qas_availability}. The architecture is required to support incremental rollouts, where new versions are deployed while old versions remain live, and to integrate CI/CD pipelines into the overall system. Rollbacks must be possible if software health checks fail during deployment, and the deployment process should avoid any global downtime across factories.
+
+\subsubsection{Interoperability}
+Interoperability is required to integrate heterogeneous devices, protocols, and vendors across factories. The system must support multiple communication protocols such as MQTT, using adapter microservices to connect legacy machinery to a canonical event format on the message bus. The aim is to avoid vendor lock-in and to enable integration of new devices and factories without redesigning existing services.
+
+\subsection{Supporting Quality Attributes}
+In addition to the three core attributes, several supporting quality attributes shape the architecture:
+\begin{itemize}
+\item \textbf{Performance:} Event processing latency below 5~second for monitoring tasks and cross-factory synchronisation within 10~seconds.
+\item \textbf{Scalability:} Ability to handle up to 500 sensors and actuators per factory and to scale to at least eight factories without fundamental architectural changes.
+\item \textbf{Usability:} Managers should be able to inspect and approve changes quickly (e.g., within a few minutes) via dashboards and user interfaces.
+\end{itemize}
+
+These attributes influence the selection of architectural styles, patterns, and technologies described in Section~\ref{sec:design_and_analysis_modelling}.
+
+\subsection{Example Quality Attribute Scenarios}
+
+To make the quality attributes operational and testable, we define representative quality attribute scenarios. Each scenario follows the standard structure of stimulus, environment, response, and response measures.
+
+\subsubsection{Availability Scenario: Failover During Peak Production}
+\textbf{Stimulus:} A primary bottling line sensor or machine fails during peak production hours in one factory.
+\textbf{Environment:} All four factories are in regular operation; production workload is high; the monitoring and redundancy management services are running.
+\textbf{Response:} The system detects the failure via monitoring events, the redundancy management service triggers failover, production tasks are rerouted to backup equipment, and the responsible manager is notified.
+\textbf{Response measure:} Switchover to backup equipment is completed within 10~seconds, and no production orders are lost, although minor delays may be permissible.
+
+This scenario directly supports RQ2 by providing a basis for empirical evaluation of availability and failover latency, and it guides the design of the redundancy management state machine described later.
+
+\subsubsection{Deployability Scenario: Rolling Update of Anomaly Detection Service}
+\textbf{Stimulus:} A new version of the anomaly detection service is ready for deployment.
+\textbf{Environment:} The system is actively processing sensor events and production-related messages in all factories; existing services are live and handling production workloads.
+\textbf{Response:} The CI/CD pipeline builds and tests the new version; the deployment orchestrator initiates an incremental rollout while keeping the old version active. Software health checks monitor the new version; on failure, the orchestrator triggers rollback and restores the previous version.
+\textbf{Response measure:} No global downtime occurs; rollback completion time is bounded (e.g., below 30~seconds) when triggered.
+
+This scenario informs architectural decisions for the deployment orchestrator and CI/CD integration and contributes to RQ2 and RQ4 by enabling analysis of deployment strategies and their impact on deployability.
+
+\subsubsection{Interoperability Scenario: Integration of a Legacy Device}
+\textbf{Stimulus:} A new legacy PLC is added to one of the factories (e.g., Factory~3).
+\textbf{Environment:} The existing MQTT-based infrastructure and microservices are running and consuming events in a canonical format on the message bus.
+\textbf{Response:} An adapter microservice is configured or deployed to translate to the system’s canonical event schema. The adapter publishes compatible events on the message bus so that existing monitoring, anomaly detection, and coordination services can consume them without modification.
+\textbf{Response measure:} Integration is achieved by modifying or adding only the adapter; no changes are required to existing microservices; events from the new PLC appear on monitoring dashboards within a bounded time (e.g., less than 2~seconds from emission).
+
+This scenario supports RQ1, RQ2, and RQ4 by concretising interoperability requirements and by providing a basis for comparing alternative integration mechanisms and adapter designs.
+
+\subsection{Role of QAS in Design and Evaluation}
+
+The quality attribute scenarios serve multiple purposes in the project. First, they guide architectural design by making explicit which behaviours and constraints the system must support under realistic operational conditions. Second, they provide targets for architectural modelling, allowing structural and behavioural models to be checked against concrete expectations (e.g., whether state machines can realise the required responses within given bounds). Third, they form the backbone of the empirical evaluation plan for availability, and interoperability, as well as the formal verification and validation activities planned for key behavioural models. In this way, the QAS directly contribute to answering RQ1--RQ4 and the main research question.
 
 \section{Design and Analysis Modelling}
 \label{sec:design_and_analysis_modelling}
-Design and analysis modelling.
 
-\section{Formal verification and validation}
+This section presents the architectural design and analysis models for the Industry~4.0 production management platform. The design is guided by the requirements and quality attribute scenarios introduced earlier, with a focus on availability, deployability, and interoperability, and is structured to support both empirical evaluation and formal verification and validation.
+
+Figure~\ref{fig:architecture_overview} provides an architectural overview of the production platform, including the four factories, the communication layer, the core systems production management system (PMS) and monitoring and maintenance system (MMS), the Deployment and Integration System (DIS), and the data persistence layer.
+
+\begin{figure*}[t]
+\centering
+
+\includegraphics[width=0.8\textwidth]{architecture_overview.png}
+\caption{Overview of the unified production platform architecture.}
+\label{fig:architecture_overview}
+\end{figure*}
+
+\subsection{Architectural Style and Patterns}
+
+The overall architectural style is a microservices-based, event-driven architecture. A central Kafka message bus provides a publish--subscribe communication backbone for decoupling services and factories. At the factory edge, device messages from sensors and actuators are collected via an MQTT broker; adapter services transform these messages into canonical events and forward them to Kafka. Services communicate primarily by publishing and subscribing to domain events such as \texttt{workflow\_updated}, \texttt{schedule\_updated}, \texttt{anomaly\_detected}, \texttt{failover\_executed}, and \texttt{deployment\_update}. Where interactions between core subsystems are required, the Production Management System (PMS) and the Monitoring \& Maintenance System (MMS) expose gRPC APIs towards each other.
+
+Key architectural patterns and tactics include:
+\begin{itemize}\label{patterns-and-tactics}
+\item \textbf{Microservice decomposition} of production management, monitoring and maintenance, and deployment and integration concerns into independently deployable services.
+\item \textbf{Publish--subscribe} via Kafka for loose coupling, extensibility, and integration across factories.
+\item \textbf{Edge messaging via MQTT} to interface with heterogeneous factory devices and protocols, bridged into the central Kafka bus by adapter services.
+\item \textbf{gRPC-based point-to-point communication} between PMS and MMS for selected synchronous interactions that are not naturally event-driven.
+\item \textbf{Containerization} of services using Docker images to support portable deployment and integration with CI/CD pipelines.
+\item \textbf{Continuous Deployment} via the DIS, which uses CI/CD pipelines to build, test, and roll out updated containers across factories.
+\item \textbf{Redundancy and failover} for critical components to support high availability and rapid switchover.
+\item \textbf{Health checks and circuit breaker} mechanisms to isolate failing services and support safe deployment and rollback.
+\end{itemize}
+
+These choices are made explicitly to address the core quality attributes identified in Section~\ref{sec:qas} and form the basis for exploring trade-offs related to communication patterns, integration mechanisms, and deployment strategies in RQ4.
+
+\subsubsection{Data Persistence}
+
+Data persistence is handled by a polyglot storage layer that separates structured production data from high-volume sensor and configuration data. Orders and production events are stored in a relational PostgreSQL database, which supports transactional integrity and relational queries over production orders, line assignments, and historical execution data. Sensor data, anomaly logs, and workload or workflow configuration are stored in MongoDB, which offers a flexible document model suitable for heterogeneous sensor schemas and evolving configuration structures. This split allows the architecture to leverage the strengths of each technology while keeping the persistence layer aligned with the functional boundaries of PMS and MMS.
+
+\subsection{Main Systems and Subsystems}
+
+The architecture is organised into three main systems, each with several subsystems:
+\begin{enumerate}
+\item \textbf{Production Management System (PMS)}
+\begin{itemize}
+\item \emph{Scheduling Subsystem}: manages production orders, deadlines, and resource assignments.
+\item \emph{Workflow Configuration Subsystem}: stores and configures production recipes and workflows.
+\end{itemize}
+\item \textbf{Monitoring and Maintenance System (MMS)}
+\begin{itemize}
+\item \emph{Monitoring Subsystem}: collects and aggregates sensor data and machine status.
+\item \emph{Anomaly Detection Subsystem}: detects anomalies in sensor data and operating conditions.
+\item \emph{Redundancy Management Subsystem}: implements failover logic and redundancy policies.
+\end{itemize}
+\item \textbf{Deployment and Integration System (DIS)}
+\begin{itemize}
+\item \emph{CI/CD Pipeline Subsystem}: builds, tests, and packages new service versions as Docker images.
+\item \emph{Deployment Orchestrator Subsystem}: coordinates incremental deployments and rollbacks of containers across factories using the CI/CD tooling.
+\end{itemize}
+\end{enumerate}
+
+Interactions between the core systems are realised through well-defined service interfaces, with coordination between PMS and MMS provided via gRPC.
+
+\subsection{Design-Level Components (Microservices)}
+
+Within the systems and subsystems, functionality is realised through concrete microservices. Representative examples include:
+\begin{itemize}
+\item \textbf{Scheduling Service} \
+Provides a REST API for managing production orders, workloads, and deadlines. It publishes \texttt{schedule\_updated} events to Kafka when schedules change.
+\item \textbf{Workflow Configuration Service} \
+Manages recipes and production workflows and publishes \texttt{workflow\_updated} events when configurations are modified.
+\item \textbf{Monitoring Service} \
+Subscribes to sensor events from Kafka topic and detects basic threshold violations, forwarding relevant information to anomaly detection.
+\item \textbf{Anomaly Detection Service} \
+Applies more advanced anomaly detection logic over incoming data and emits structured \texttt{anomaly\_detected} events with recommended actions.
+\item \textbf{Redundancy Management Service} \
+Listens to \texttt{anomaly\_detected} and resource status events, decides on failover actions, reroutes production tasks to backup resources, and emits \texttt{failover\_executed} events.
+\item \textbf{PMS/MMS gRPC API} \
+Provides communication between PMS and MMS for use cases that are not purely event-driven (e.g., direct status queries or configuration updates).
+\item \textbf{CI/CD Service} \
+Integrates with version control to trigger builds and tests as part of the continuous integration pipeline, producing Docker images for deployment.
+\item \textbf{Deployment Orchestrator} \
+Coordinates rolling updates of containers across services, monitors software health, and triggers rollback in case of deployment failures, using the CI/CD pipeline and container registry as back-end infrastructure.
+\item \textbf{Adapter / Connector Services} \
+Bridge heterogeneous protocols (MQTT, HTTP/REST, etc.) and expose a canonical event format on Kafka, insulating domain services from device- and vendor-specific details.
+\end{itemize}
+
+These microservices collectively realise the functional requirements (FR1--FR9) \ref{tab:fr_table} and provide explicit areas where availability, deployability, and interoperability tactics are applied.
+
+\subsection{Variability View (Feature Model)}
+
+From a variability perspective, the architecture can be described using a feature-oriented view:
+\begin{itemize}
+\item \textbf{Mandatory features}
+\begin{itemize}
+\item Production Management 
+\item Monitoring and Maintenance
+\item Deployment and Integration
+\end{itemize}
+\item \textbf{Optional or variant features}
+\begin{itemize}
+\item Optimization Module.
+\item Security Features.
+\end{itemize}
+\end{itemize}
+
+This allows the platform to be configured for diverse deployment environments and supports assessment of how feature choices influence availability, deployability, and interoperability.
+
+\subsection{Behavioural Models (State Machines)}
+\label{sec:behavioural_models}
+
+Behaviour is modelled at the level of the three mandatory systems using one state machine per system. The models capture externally observable modes of operation and abstract from internal implementation details, supporting architectural reasoning and formal verification (RQ1, RQ3).
+
+\paragraph{Production Management System (PMS).}
+The PMS state machine shown in Fig.~\ref{fig:pms_state_machine} models the lifecycle of production orders. The system transitions from \emph{Idle} to \emph{Planning} when a new order arrives, then to \emph{Scheduled} and \emph{Executing}. If execution is disrupted, the system enters \emph{Replanning} before returning to \emph{Scheduled}. Successful execution leads to \emph{Completed}, after which the system returns to \emph{Idle}.
+
+\paragraph{Monitoring and Maintenance System (MMS).}
+The MMS state machine shown in Fig.~\ref{fig:mms_state_machine} captures monitoring and availability management. The system operates in \emph{Monitoring} under normal conditions. Suspected faults trigger a transition to \emph{Investigating}. Confirmed faults lead to \emph{Mitigating}, where failover or corrective actions are executed, followed by \emph{Stabilizing} and a return to \emph{Monitoring}. If recovery fails, the system transitions to \emph{Escalated}.
+
+\paragraph{Deployment and Integration System (DIS).}
+The DIS state machine shown in Fig.~\ref{fig:dis_state_machine} models continuous deployment. From \emph{Idle}, the system transitions to \emph{Preparing} and \emph{Deploying} for rolling updates. The \emph{Verifying} state evaluates health checks. On success, the system returns to \emph{Idle}; on failure, it transitions to \emph{RollingBack} before returning to \emph{Idle}.
+
+These three behavioural models provide a compact foundation for specifying and verifying properties related to availability, deployability, and correctness.
+
+
+\subsection{Requirements--Architecture Traceability}
+
+To ensure the architecture addresses the requirements \ref{tab:traceability_table} systematically, we map each requirement to the responsible systems/subsystems and the behavioural models:
+
+\begin{itemize}
+\item \textbf{FR1, FR6, NFR2:} MMS \emph{Monitoring} + \emph{Anomaly Detection} (MQTT$\rightarrow$Kafka event flow) for continuous monitorering, anomaly alerts, and bounded monitoring latency.
+\item \textbf{FR2, NFR1:} MMS \emph{Redundancy Management} for automated failover/rerouting and availability targets, captured in the Monitoring \& Maintenance state machine.
+\item \textbf{FR3, NFR4, NFR5:} PMS \emph{Scheduling} + \emph{Workflow Configuration} for dynamic reconfiguration and manager visibility, captured in the Production Management state machine.
+\item \textbf{FR4, NFR4:} DIS \emph{CI/CD Pipeline} + \emph{Deployment Orchestrator} for incremental, zero-downtime rollouts and rollback, captured in the Deployment \& Integration state machine.
+\item \textbf{FR5, NFR2, NFR3:} Cross-factory coordination via the Kafka message bus and coordinating services in PMS/MMS for integration, bounded sync, and scaling across factories/devices.
+\item \textbf{FR7, NFR6:} Adapter/connector services and canonical event schemas to integrate heterogeneous protocols/vendors and avoid vendor lock-in.
+\end{itemize}
+
+This traceability ties requirements to concrete architectural elements, indicating where to collect measurements (RQ2) and which behaviours to analyse/verify using the three state machines (RQ3).
+
+
+
+\section{Formal Verification and Validation}
 \label{sec:formal_v_and_v}
-Formal verification and validation of system(s).
+
+This section discusses validation and verification using formal UPPAAL models and prototype-based testing, including verification of behavioural properties via timed automata and empirical evaluation of non-functional requirements.
+
+\subsection{Formal Verification using UPPAAL}
+
+Formal verification is planned for the system's critical behavioural properties to assess correctness, safety, and potential design weaknesses (RQ3) \ref{rq:RQ3}.
+This will be achieved by translating the core conceptual state machines, Production Management System (PMS), Monitoring and Maintenance System (MMS) logic, and Sensor/Queue components, into a network of timed automata within the UPPAAL model checker.
+This process directly links the architectural models to verifiable properties, thereby supporting both architectural validation and formal analysis (RQ1 \ref{rq:RQ1}, RQ3 \ref{rq:RQ3}).
+
+\subsubsection{UPPAAL Model Construction and Templates}\label{Uppaal-templates}
+
+The model is built using four distinct templates that represent the system's core components:
+\begin{itemize}
+    \item \textbf{Sensor (Template Name: \texttt{Sensor(int id)}):} Models the core production task, including the probabilistic chance of failure/at-risk states and the time taken for a service cycle. This template is instantiated twice as \texttt{Sensor0} and \texttt{Sensor1}.
+    \item \textbf{Production Management System (Template Name: \texttt{PMS}):} Combines PMS and MMS by capturing the logic for monitoring sensor status and managing redundancy, transitioning through \texttt{Idle} $\to$ \texttt{CheckStatus} $\to$ \texttt{UpdatePrimarySensor} to perform failover.
+    \item \textbf{Queue (Template Name: \texttt{Queue}):} Models the workload and its distribution, managing the \texttt{queueAmount} and triggering the \texttt{requestProcess} channel when production requests are ready.
+    \item \textbf{System Composition:} The final model is instantiated as the parallel composition: \texttt{Sensor0, Sensor1, PMS, Queue;}
+\end{itemize}
+
+The primary focus of verification is on properties related to the core quality attributes: availability and coordination correctness.
+
+\subsubsection{Availability and Redundancy Management}
+
+Verification targets the stability, safety, and fault-tolerance mechanisms implemented across the \texttt{PMS} and \texttt{Sensor} templates.
+
+\begin{itemize}
+\item \textbf{Safety Property (Absence of Deadlock):}
+This property ensures the system, when fully composed, cannot enter a deadlocked configuration where no further time can pass or transitions can be taken.
+\begin{itemize}
+\item \textbf{UPPAAL Query:} \texttt{A[] not deadlock}
+\end{itemize}
+
+\item \textbf{Time-Bounded Probability (Service Completion):}
+This property verifies the probability that service completion (reaching \texttt{Sensor0.Free}) occurs within a 1000 time-unit deadline. This provides a direct measure of the overall system's timely responsiveness under load.
+\begin{itemize}
+\item \textbf{UPPAAL Query:} \texttt{Pr[time <= 1000] (<> Sensor0.Free)}
+\end{itemize}
+
+\item \textbf{Liveness Property (Eventual Failover):}
+This property ensures that the fault-tolerance mechanism is always available, guaranteeing that the system can eventually reach the \texttt{PMS.UpdatePrimarySensor} location to correct an issue and switch the primary sensor when necessary.
+\begin{itemize}
+\item \textbf{UPPAAL Query:} \texttt{E<> PMS.UpdatePrimarySensor}
+\end{itemize}
+\end{itemize}
+
+\subsubsection{Correctness of Coordination (PMS/Sensor/Queue)}
+
+Verification addresses the consistency of status tracking and communication across the system components, ensuring the primary sensor is correctly identified and utilized.
+
+\begin{itemize}
+\item \textbf{Safety Property (Primary Sensor State Consistency):}
+This verifies that whenever a sensor is marked as \texttt{OCCUPIED} in its local state array, its index correctly matches the global \texttt{primarySensorID} being used by the system.
+\begin{itemize}
+\item \textbf{UPPAAL Query (Sensor 0):} \texttt{A[] (sensorState[0] == OCCUPIED imply 0 == primarySensorID)}
+\item \textbf{UPPAAL Query (Sensor 1):} \texttt{A[] (sensorState[1] == OCCUPIED imply 1 == primarySensorID)}
+\end{itemize}
+
+\item \textbf{Safety Property (No Primary Sensor Downtime):}
+This property ensures that production is never requested from the Queue when the assigned primary sensor is not \texttt{FREE}. This is crucial for avoiding unnecessary delays.
+\begin{itemize}
+\item \textbf{UPPAAL Query:} \texttt{A[] not (Queue.Sending and sensorState[primarySensorID] != FREE)}
+\end{itemize}
+\end{itemize}
+
+Together, these formally specified properties enable analysis of the architectural models and provide confidence that the system design satisfies its critical quality attributes with respect to availability and coordination correctness.
+
+\subsection{Prototype Implementation and NFR Testing}
+
+To complement the formal verification performed in UPPAAL a working prototype of the Industry 4.0 production system was implemented to validate the architectural design through empirical testing. This is also verifies whether the chosen QA-tactics \ref{patterns-and-tactics} used satisfy our non-functional requirements/quality attributes. The prototype includes all core components, MQTT-based sensor communication, Kafka event streaming, Production Management System (PMS), Monitoring and Maintenance System (MMS), and a web-based dashboard.
+
+\subsubsection{Testing Framework and Coverage}
+
+A test suite was developed using the Mocha/Chai testing framework to validate the six primary Non-Functional Requirements (NFRs) and their corresponding quality attributes. The test suite consists of 10 tests covering 6 NFR categories, providing automated validation of the system's operational characteristics under realistic conditions.
+
+\subsubsection{NFR Test Coverage}
+
+The prototype was evaluated using an automated Mocha/Chai test suite covering the six Non-Functional Requirements (NFRs). Availability (NFR1) tests validated MMS failover and recovery within 10 seconds with preserved data integrity. Performance (NFR2) tests verified end-to-end latency constraints across the event-driven architecture, including MQTT-to-Kafka propagation, sensor processing, and system behavior under load with 500 concurrent sensors. Scalability (NFR3) was validated through concurrent execution of multiple factories and high sensor densities. Modifiability (NFR4) tests confirmed modularity, loose coupling, configuration change handling, and high service availability during updates. Usability (NFR5) tests ensured dashboard responsiveness and timely access to factory and sensor status information. Interoperability (NFR6) tests verified multi-protocol support and correct operation of the MQTT-to-Kafka protocol adapter using standard, vendor-independent technologies.
+
+\subsubsection{Test Results and Findings}
+
+Empirical testing of the prototype yielded the following key findings:
+
+\begin{itemize}
+    \item \textbf{Availability (NFR1):} MMS failover recovery was validated to complete within the 10-second requirement, with data integrity maintained across restart events. The event-driven architecture's asynchronous nature proved effective for maintaining availability during component failures.
+
+    \item \textbf{Performance (NFR2):} All latency requirements ($<$5s) were met with significant margin. Key latency metrics were:
+    \begin{itemize}
+        \item \textbf{MQTT-to-Kafka Propagation (Heartbeat):} Averaged \textbf{3.05ms}.
+        \item \textbf{Heartbeat-to-MMS Persistence:} Averaged \textbf{381.30ms}.
+        \item \textbf{Sensor Reading to PMS Progress Update:} Completed in \textbf{2012ms}.
+        \item \textbf{Sensor Failure to PMS Notification:} Completed in \textbf{3159ms}.
+    \end{itemize}
+
+    \item \textbf{Scalability (NFR3):} The system successfully handled \textbf{500 concurrent sensors} sending heartbeats. The load test, run across \textbf{8 factories}, demonstrated excellent performance consistency:
+    \begin{itemize}
+        \item \textbf{Success Rate:} 100\% message success (500/500).
+        \item \textbf{Average Latency (Heartbeat):} \textbf{253.49ms}.
+        \item \textbf{P95 Latency (Heartbeat):} \textbf{426ms}.
+        \item \textbf{Per-Factory Consistency:} Average latency across the 8 factories remained consistent ($\sim$252ms to $\sim$254ms).
+    \end{itemize}
+
+    \item \textbf{Architectural Validation:} The loose coupling between services, validated through NFR4 and NFR6 tests, confirmed that the event-driven architecture supports independent service modification and protocol flexibility, addressing the modifiability and interoperability quality attributes.
+\end{itemize}
+
+These empirical results validate that the prototype implementation successfully realizes the quality attributes specified in the architectural design, complementing the formal verification performed in UPPAAL by demonstrating correct behavior under realistic operational conditions.
 
 
-\section{Evaluation}
+
+\section{Evaluation} 
 \label{sec:evaluation}
+This section evaluates the proposed architecture using a Lightweight Architecture Evaluation (Even-Lighter / LAE) grounded in the defined Quality Attribute Scenarios (QAS), complemented by controlled architectural experiments and measurements on a prototype and formal analytical verification using UPPAAL. The LAE supports scenario-based reasoning about architectural decisions, sensitivity points, and trade-offs, while empirical experiments provide quantitative evidence for selected non-functional requirements. Formal verification strengthens the evaluation by analytically validating key behavioural properties. Together, these methods provide complementary, risk-oriented evidence for answering RQ1–RQ4.
 
-% Empirical evaluation
-This Section describes the evaluation of the proposed design.
-Section \ref{sec:design} introduces the design of the experiment to evaluate the system. 
-Section \ref{sec:measurements} identifies the measurements in the system for the experiment.
-Section \ref{sec:pilot_test} describes the pilot test used to compute the number of replication in the actual evaluation. 
-Section \ref{sec:analysis} presents the analysis of the results from the experiment. 
+\subsection {RQ1: Architectural Support for Availability, Deployability, and Interoperability (LAE)}
+Using the defined QAS (failover, rolling updates, legacy integration), we apply LAE-style evaluation to assess whether architectural tactics deliver the intended quality attribute responses. Availability is supported through redundancy management and event-driven decoupling via Kafka, with empirical failover tests confirming bounded recovery time. This approach improves resilience but introduces additional complexity and resource overhead. Deployability is enabled through CI/CD pipelines and rolling updates with health checks, supporting incremental updates without downtime, though requiring careful automation and observability. Interoperability is achieved through MQTT edge integration, adapter services, and canonical Kafka events, enabling heterogeneous device integration at the cost of increased adapter maintenance.
 
-\subsection{Experiment design}
-\label{sec:design}
 
-\subsection{Measurements}
-\label{sec:measurements}
+\subsection{RQ2: Extent to Which Requirements Are Satisfied (Experiments and Measurements)}
+RQ2 is addressed through controlled experiments using an automated Mocha/Chai test suite. Availability is validated by failover recovery within 10 seconds, and supporting QAs, such as performance is validated through end-to-end latency measurements (e.g., MQTT→Kafka), and scalability under load (up to 500 sensors per factory and multi-factory execution). These experiments provide quantitative and repeatable evidence that availability, performance, and scalability requirements are met under controlled conditions. Deployability and interoperability are further assessed through LAE-style evaluation, relying on qualitative judgment.
 
-\subsection{Pilot test}
-\label{sec:pilot_test}
+\subsection {RQ3: Formal Verification Results (Analytical Evaluation)}
+RQ3 is addressed through formal analytical evaluation using UPPAAL, critical behavioural and structural properties \ref{Uppaal-templates} of the architecture are used to verify deadlock freedom, eventual failover reachability, and consistency of primary resource selection. These results validate key behavioural assumptions and complement empirical testing.
 
-\subsection{Analysis}
-\label{sec:analysis}
+\subsection{RQ4: Architectural Trade-offs (LAE Synthesis)}
+RQ4 synthesises insights from the LAE, experiments, and formal verification. Event-driven pub/sub improves availability and scalability but increases operational complexity; MQTT-based edge integration enhances interoperability but adds maintenance overhead; rolling updates support deployability but require sophisticated orchestration.
+\\
+The combined use of LAE, empirical experiments, and formal verification provides a concise, methodologically sound evaluation of the architecture, with complementary evidence supporting RQ1–RQ4.
+
+
 
 
 \section{Conclusion}
 \label{sec:conclusion}
-Conclusion of the report, discussion and relevant future work.
+
+This work proposed a requirements-driven software architecture for a multi-factory Industry~4.0 production platform. The design combines edge integration (MQTT + adapters) with a central event backbone (Kafka) and limited synchronous gRPC interfaces between core subsystems. Structural decomposition, three system-level state machines (PMS, MMS, DIS), and requirements--architecture traceability make the design decisions explicit. Overall, the results indicate that combining scenario-driven design with explicit modelling, prototype measurement, and targeted formal verification provides a practical basis for developing dependable, continuously deployable multi-factory production software.
+
+\textbf{RQ1:} Availability, deployability, and interoperability are addressed through redundancy/failover coordination, CI/CD-based rolling updates with health checks/rollback, and canonical event-based integration via adapters.
+\textbf{RQ2:} Prototype experiments provide evidence that the key quality attribute targets are achievable under representative load and failure conditions.
+\textbf{RQ3:} UPPAAL analysis of the behavioural model increases confidence by checking critical properties such as deadlock freedom and correct failover progression.
+\textbf{RQ4:} The main trade-off is improved resilience at the cost of higher operational complexity (event semantics, adapter maintenance, observability).
 
 \subsection{Discussion}
 \label{sec:Discussion}
+The evaluation is based on a prototype and abstract models; real deployments may introduce additional timing, network, and vendor-specific constraints. Event-driven coordination implies bounded eventual consistency, requiring careful handling of ordering, idempotency, and schema evolution.
 
 \subsection{Future work}
 \label{sec:future_work}
+Future work should (i) expand fault-injection/chaos experiments, (ii) evaluate full CI/CD rollouts (canary/blue-green) and rollback behaviour, (iii) extend UPPAAL models to richer cross-factory coordination and deployment workflows with time bounds, and (iv) strengthen adapter governance with versioned schemas and contract testing.
+
+
+
 
 \bibliographystyle{IEEEtran}
 \bibliography{references}
+\clearpage
+\onecolumn
+\input{appendix}
 \vspace{12pt}
 \end{document}

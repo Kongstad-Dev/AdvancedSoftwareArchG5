@@ -1,0 +1,27 @@
+\section{Non-Functional Requirements}
+\begin{table*}[htbp]
+\centering
+\caption{Non-Functional Requirements}
+\label{tab:nfr_table}
+\begin{tabular}{|p{1.2cm}|p{3.8cm}|p{7.7cm}|}
+\hline
+\textbf{ID} & \textbf{Quality Attribute} & \textbf{Description} \\
+\hline
+NFR1 & Availability & System uptime of at least 99.9\% with failover times below 10 seconds for critical components. \\
+\hline
+NFR2 & Performance & Monitoring latency below 1 second and cross-factory data synchronisation within 5 seconds. \\
+\hline
+NFR3 & Scalability & Support up to 500 sensors and actuators per factory and at least 8 factories without architectural redesign. \\
+\hline
+NFR4 & Security & Enforce role-based access control, authentication, and encryption on critical communication channels. \\
+\hline
+NFR5 & Modifiability & Allow addition of new workflows or subsystems with less than one day of integration testing and no global system restart. \\
+\hline
+NFR6 & Reliability & Achieve a mean time between failures greater than one month and automatic handling of at least 99\% of anomalies. \\
+\hline
+NFR7 & Usability & Enable managers to inspect and approve configuration or workflow changes via dashboards within two minutes. \\
+\hline
+NFR8 & Interoperability / Flexibility & Support multiple protocols and vendors through adapters to avoid vendor lock-in. \\
+\hline
+\end{tabular}
+\end{table*}
