@@ -26,13 +26,13 @@ app.use('/api', async (req, res) => {
 
         const response = await fetch(url, options);
         const data = await response.json();
-        
+
         res.status(response.status).json(data);
     } catch (error) {
         console.error('API proxy error:', error);
-        res.status(500).json({ 
-            success: false, 
-            error: 'Failed to connect to PMS service' 
+        res.status(500).json({
+            success: false,
+            error: 'Failed to connect to PMS service'
         });
     }
 });
@@ -54,13 +54,13 @@ app.use('/mms', async (req, res) => {
 
         const response = await fetch(url, options);
         const data = await response.json();
-        
+
         res.status(response.status).json(data);
     } catch (error) {
         console.error('MMS proxy error:', error);
-        res.status(500).json({ 
-            success: false, 
-            error: 'Failed to connect to MMS service' 
+        res.status(500).json({
+            success: false,
+            error: 'Failed to connect to MMS service'
         });
     }
 });

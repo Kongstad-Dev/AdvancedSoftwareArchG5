@@ -2,7 +2,7 @@ const mqtt = require('mqtt');
 const { MongoClient } = require('mongodb');
 const { expect } = require('chai');
 
-describe('NFR: Heartbeat to MMS Detection Latency', function () {
+describe('NFR2: Performance - Heartbeat to MMS Detection Latency', function () {
     this.timeout(30000);
 
     it('should detect and store heartbeat in MMS MongoDB within 2 seconds', async function () {

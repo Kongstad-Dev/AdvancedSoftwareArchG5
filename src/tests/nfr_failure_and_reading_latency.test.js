@@ -3,7 +3,7 @@ const { Client } = require('pg');
 const axios = require('axios');
 const { expect } = require('chai');
 
-describe('NFR: Sensor Failure to PMS Notification Latency', function () {
+describe('NFR2: Performance - Sensor Failure to PMS Notification Latency', function () {
     this.timeout(45000);
 
     it('should detect sensor failure and log in PMS within 10 seconds', async function () {
@@ -45,7 +45,7 @@ describe('NFR: Sensor Failure to PMS Notification Latency', function () {
     });
 });
 
-describe('NFR: Sensor Reading to PMS Progress Update Latency', function () {
+describe('NFR2: Performance - Sensor Reading to PMS Progress Update Latency', function () {
     this.timeout(45000);
 
     it('should process sensor reading via Kafka within 3 seconds', async function () {

@@ -2,7 +2,7 @@ const mqtt = require('mqtt');
 const { Kafka } = require('kafkajs');
 const { expect } = require('chai');
 
-describe('NFR: MQTT → Kafka Communication Latency', function () {
+describe('NFR2: Performance - MQTT → Kafka Communication Latency', function () {
     this.timeout(30000);
 
     it('should propagate sensor reading from MQTT to Kafka within 1 second', async function () {
