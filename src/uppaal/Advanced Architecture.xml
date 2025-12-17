@@ -1,0 +1,297 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!DOCTYPE nta PUBLIC '-//Uppaal Team//DTD Flat System 1.6//EN' 'http://www.it.uu.se/research/group/darts/uppaal/flat-1_6.dtd'>
+<nta>
+	<declaration>// ---------- global declarations ----------
+const int N_SENSORS = 2;   // change as needed
+
+// Channels
+broadcast chan stateChanged;   // sensors notify PMS
+broadcast chan requestProcess;           // queue tells a sensor to start processing
+
+// Shared variables
+int primarySensorID = 0;       // index of the currently used sensor
+int queueAmount = 100;          // starting number of sodas
+
+// Sensor states (constants)
+const int FREE = 0;
+const int OCCUPIED = 1;
+const int ATRISK = 2;
+const int FAILED = 3;
+
+// Shared array of sensor states (initialize to FREE)
+int sensorState[N_SENSORS] = { FREE, FREE };
+
+clock time;</declaration>
+	<template>
+		<name>Queue</name>
+		<declaration>clock qt;</declaration>
+		<location id="id0" x="-93" y="0">
+			<name x="-118" y="-34">Waiting</name>
+		</location>
+		<location id="id1" x="127" y="0">
+			<name x="102" y="-34">Check</name>
+		</location>
+		<location id="id2" x="518" y="0">
+			<name x="493" y="-34">Sending</name>
+		</location>
+		<init ref="id0"/>
+		<transition id="id3">
+			<source ref="id2"/>
+			<target ref="id0"/>
+			<label kind="synchronisation" x="51" y="136">requestProcess!</label>
+			<label kind="assignment" x="51" y="153">queueAmount = queueAmount - 1</label>
+			<nail x="110" y="136"/>
+		</transition>
+		<transition id="id4">
+			<source ref="id1"/>
+			<target ref="id0"/>
+			<nail x="25" y="-102"/>
+		</transition>
+		<transition id="id5">
+			<source ref="id1"/>
+			<target ref="id2"/>
+			<label kind="guard" x="136" y="-68">queueAmount &gt; 0 &amp;&amp; (sensorState[primarySensorID] == FREE)</label>
+		</transition>
+		<transition id="id6">
+			<source ref="id0"/>
+			<target ref="id1"/>
+			<label kind="guard" x="-8" y="-42">qt &gt;= 5</label>
+			<label kind="assignment" x="-8" y="-25">qt = 0</label>
+		</transition>
+	</template>
+	<template>
+		<name x="5" y="5">Sensor</name>
+		<parameter>int id</parameter>
+		<declaration>int reading;
+int random_done = 0;</declaration>
+		<location id="id7" x="-68" y="-221">
+			<name x="-93" y="-255">Failed</name>
+		</location>
+		<location id="id8" x="-348" y="-17">
+			<name x="-365" y="-51">Free</name>
+		</location>
+		<location id="id9" x="-68" y="-17">
+			<name x="-102" y="-51">Occupied</name>
+			<committed/>
+		</location>
+		<location id="id10" x="204" y="-17">
+			<name x="179" y="-51">AtRisk</name>
+		</location>
+		<init ref="id8"/>
+		<transition id="id11">
+			<source ref="id9"/>
+			<target ref="id9"/>
+			<label kind="select" x="-136" y="144">r : int[1,100]</label>
+			<label kind="guard" x="-136" y="178">random_done == 0</label>
+			<label kind="assignment" x="-136" y="161">reading = r, random_done = 1</label>
+			<nail x="7" y="131"/>
+			<nail x="-154" y="131"/>
+		</transition>
+		<transition id="id12">
+			<source ref="id9"/>
+			<target ref="id10"/>
+			<label kind="guard" x="-17" y="25">reading &lt; 95 &amp;&amp; reading &gt; 85</label>
+			<label kind="synchronisation" x="-17" y="-8">stateChanged!</label>
+			<label kind="assignment" x="-17" y="8">sensorState[id] = ATRISK, random_done = 0</label>
+		</transition>
+		<transition id="id13">
+			<source ref="id9"/>
+			<target ref="id7"/>
+			<label kind="guard" x="-59" y="-195">reading &gt;= 95</label>
+			<label kind="synchronisation" x="-59" y="-178">stateChanged!</label>
+			<label kind="assignment" x="-59" y="-161">sensorState[id] = FAILED, random_done = 0</label>
+		</transition>
+		<transition id="id14">
+			<source ref="id9"/>
+			<target ref="id8"/>
+			<label kind="guard" x="-416" y="-153">reading &lt;= 85</label>
+			<label kind="synchronisation" x="-416" y="-187">stateChanged!</label>
+			<label kind="assignment" x="-416" y="-170">sensorState[id] = FREE, random_done = 0</label>
+			<nail x="-204" y="-102"/>
+		</transition>
+		<transition id="id15">
+			<source ref="id8"/>
+			<target ref="id9"/>
+			<label kind="guard" x="-450" y="0">queueAmount &gt; 0 &amp;&amp; primarySensorID == id</label>
+			<label kind="synchronisation" x="-450" y="17">requestProcess?</label>
+			<label kind="assignment" x="-450" y="34">sensorState[id] = OCCUPIED</label>
+		</transition>
+	</template>
+	<template>
+		<name>PMS</name>
+		<location id="id16" x="0" y="0">
+			<name x="-17" y="-34">Idle</name>
+		</location>
+		<location id="id17" x="493" y="0">
+			<name x="442" y="-34">UpdatePrimary</name>
+		</location>
+		<location id="id18" x="187" y="0">
+			<name x="177" y="-34">CheckStatus</name>
+			<committed/>
+		</location>
+		<init ref="id16"/>
+		<transition id="id19">
+			<source ref="id18"/>
+			<target ref="id16"/>
+			<label kind="guard" x="-51" y="102">sensorState[primarySensorID] == FREE</label>
+			<nail x="85" y="85"/>
+		</transition>
+		<transition id="id20">
+			<source ref="id18"/>
+			<target ref="id17"/>
+			<label kind="guard" x="229" y="25">sensorState[primarySensorID] == FAILED || sensorState[primarySensorID] == ATRISK</label>
+		</transition>
+		<transition id="id21">
+			<source ref="id16"/>
+			<target ref="id18"/>
+			<label kind="synchronisation" x="42" y="-25">stateChanged?</label>
+		</transition>
+		<transition id="id22">
+			<source ref="id17"/>
+			<target ref="id16"/>
+			<label kind="assignment" x="85" y="-195">primarySensorID = (primarySensorID + 1) % N_SENSORS</label>
+			<nail x="238" y="-153"/>
+		</transition>
+	</template>
+	<system>Sensor0 = Sensor(0);
+Sensor1 = Sensor(1);
+PMS0 = PMS();
+Queue0 = Queue();
+system Sensor0, Sensor1, PMS0, Queue0;</system>
+	<queries>
+		<query>
+			<formula>A[] not deadlock</formula>
+			<comment>Checks if the system can always proceed from its current state. A deadlock means the model is stuck.</comment>
+			<result outcome="success" type="quality" timestamp="2025-12-14 19:39:14 +0100">
+			</result>
+		</query>
+		<query>
+			<formula>A[] (Sensor0.Failed imply sensorState[0] == FAILED)</formula>
+			<comment>Checks if the state in the model (Sensor0.Failed) always matches the global shared array (sensorState[0]).</comment>
+			<result outcome="success" type="quality" timestamp="2025-12-14 19:24:45 +0100">
+			</result>
+		</query>
+		<query>
+			<formula>E&lt;&gt; PMS0.UpdatePrimary</formula>
+			<comment>Checks if it is possible for the PMS to enter the state where it updates the primary sensor ID.</comment>
+			<result outcome="success" type="quality" timestamp="2025-12-14 19:38:58 +0100">
+			</result>
+		</query>
+		<query>
+			<formula>A[] (sensorState[0] == OCCUPIED imply 0 == primarySensorID)</formula>
+			<comment>Checks if Sensor 0 is only OCCUPIED when it is the primary.</comment>
+			<result outcome="success" type="quality" timestamp="2025-12-14 19:38:50 +0100">
+			</result>
+		</query>
+		<query>
+			<formula>A[] (sensorState[1] == OCCUPIED imply 1 == primarySensorID)</formula>
+			<comment>Checks if Sensor 1 is only OCCUPIED when it is the primary.</comment>
+			<result outcome="success" type="quality" timestamp="2025-12-14 19:23:03 +0100">
+			</result>
+		</query>
+		<query>
+			<formula>A[] not (Queue0.Sending and sensorState[primarySensorID] != FREE)</formula>
+			<comment>Checks if the system always avoids a state where the Queue is in a hypothetical SendingRequest location AND the primary sensor is busy (OCCUPIED, ATRISK, or FAILED).</comment>
+			<result outcome="success" type="quality" timestamp="2025-12-14 19:25:53 +0100">
+			</result>
+		</query>
+		<query>
+			<formula>E&lt;&gt; (primarySensorID == 1 &amp;&amp; Sensor1.Occupied)</formula>
+			<comment>This query checks that if Sensor0 fails, the system can eventually move Sensor1 into the OCCUPIED state by setting it as the new primary sensor.</comment>
+			<result outcome="success" type="quality" timestamp="2025-12-14 19:43:43 +0100">
+			</result>
+		</query>
+		<query>
+			<formula>Pr[time &lt;= 1000] (&lt;&gt; Sensor0.Free)</formula>
+			<comment/>
+			<result outcome="success" type="interval" value="≥ 0.950056 (95% CI)" timestamp="2025-12-14 20:01:56 +0100">
+				<details>≥ 0.950056 (95% CI)</details>
+				<plot title="Probability Density Distribution" xaxis="time" yaxis="probability density">
+					<series title="density" type="b(0.000000)" color="0x0000ff" encoding="csv">0.0,4.503599627370496E15
+					</series>
+					<series title="average" type="pl" color="0x00dd00" encoding="csv">0.0,0.0
+0.0,4.503599627370496E15
+					</series>
+					<comment>Parameters: α=0.05, ε=0.05, bucket width=2.2204e-16, bucket count=1
+Runs: 72 in total, 72 (100%) displayed, 0 (0%) remaining
+Span of displayed sample: [0, 0]
+Mean estimate of displayed sample: ≈ 0</comment>
+				</plot>
+				<plot title="Probability Density Confidence Intervals" xaxis="time" yaxis="probability density">
+					<series title="upper limit" type="b(0.000000)" color="0xa0a0ff" encoding="csv">0.0,1.0
+					</series>
+					<series title="lower limit" type="b(0.000000)" color="0x0000ff" encoding="csv">0.0,0.9500559162941453
+					</series>
+					<series title="average" type="pl" color="0x00dd00" encoding="csv">0.0,0.0
+0.0,4.503599627370496E15
+					</series>
+					<comment>Parameters: α=0.05, ε=0.05, bucket width=2.2204e-16, bucket count=1
+Runs: 72 in total, 72 (100%) displayed, 0 (0%) remaining
+Span of displayed sample: [0, 0]
+Mean estimate of displayed sample: ≈ 0</comment>
+				</plot>
+				<plot title="Probability Distribution" xaxis="time" yaxis="probability">
+					<series title="probability" type="b(0.000000)" color="0x0000ff" encoding="csv">0.0,1.0
+					</series>
+					<series title="average" type="pl" color="0x00dd00" encoding="csv">0.0,0.0
+0.0,1.0
+					</series>
+					<comment>Parameters: α=0.05, ε=0.05, bucket width=2.2204e-16, bucket count=1
+Runs: 72 in total, 72 (100%) displayed, 0 (0%) remaining
+Span of displayed sample: [0, 0]
+Mean estimate of displayed sample: ≈ 0</comment>
+				</plot>
+				<plot title="Probability Confidence Intervals" xaxis="time" yaxis="probability">
+					<series title="upper limit" type="b(0.000000)" color="0xa0a0ff" encoding="csv">0.0,1.0
+					</series>
+					<series title="lower limit" type="b(0.000000)" color="0x0000ff" encoding="csv">0.0,0.9500559162941453
+					</series>
+					<series title="average" type="pl" color="0x00dd00" encoding="csv">0.0,0.0
+0.0,1.0
+					</series>
+					<comment>Parameters: α=0.05, ε=0.05, bucket width=2.2204e-16, bucket count=1
+Runs: 72 in total, 72 (100%) displayed, 0 (0%) remaining
+Span of displayed sample: [0, 0]
+Mean estimate of displayed sample: ≈ 0</comment>
+				</plot>
+				<plot title="Cumulative Probability Distribution" xaxis="time" yaxis="probability">
+					<series title="cumulative" type="l" color="0x000000" encoding="csv">0.0,0.0
+					</series>
+					<series title="average" type="pl" color="0x00dd00" encoding="csv">0.0,0.0
+0.0,1.0
+					</series>
+					<comment>Parameters: α=0.05, ε=0.05, bucket width=2.2204e-16, bucket count=1
+Runs: 72 in total, 72 (100%) displayed, 0 (0%) remaining
+Span of displayed sample: [0, 0]
+Mean estimate of displayed sample: ≈ 0</comment>
+				</plot>
+				<plot title="Cumulative Probability Confidence Intervals" xaxis="time" yaxis="probability">
+					<series title="upper limit" type="k" color="0x0000dd" encoding="csv">0.0,0.04994408370585468
+					</series>
+					<series title="lower limit" type="k" color="0xdd0000" encoding="csv">0.0,0.0
+					</series>
+					<series title="cumulative" type="l" color="0x000000" encoding="csv">0.0,0.0
+					</series>
+					<series title="average" type="pl" color="0x00dd00" encoding="csv">0.0,0.0
+0.0,1.0
+					</series>
+					<comment>Parameters: α=0.05, ε=0.05, bucket width=2.2204e-16, bucket count=1
+Runs: 72 in total, 72 (100%) displayed, 0 (0%) remaining
+Span of displayed sample: [0, 0]
+Mean estimate of displayed sample: ≈ 0</comment>
+				</plot>
+				<plot title="Frequency Histogram" xaxis="time" yaxis="count">
+					<series title="count" type="b(0.000000)" color="0x0000ff" encoding="csv">0.0,72.0
+					</series>
+					<series title="average" type="pl" color="0x00dd00" encoding="csv">0.0,0.0
+0.0,72.0
+					</series>
+					<comment>Parameters: α=0.05, ε=0.05, bucket width=2.2204e-16, bucket count=1
+Runs: 72 in total, 72 (100%) displayed, 0 (0%) remaining
+Span of displayed sample: [0, 0]
+Mean estimate of displayed sample: ≈ 0</comment>
+				</plot>
+			</result>
+		</query>
+	</queries>
+</nta>
